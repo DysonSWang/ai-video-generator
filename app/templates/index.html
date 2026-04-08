@@ -10,8 +10,25 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        * { font-family: 'Plus Jakarta Sans', sans-serif; }
-        body { background: #0F0F23; }
+        :root {
+            --color-primary: #E11D48;
+            --color-primary-dark: #BE123C;
+            --color-bg: #0F0F23;
+            --color-surface: rgba(255, 255, 255, 0.08);
+            --color-surface-hover: rgba(255, 255, 255, 0.12);
+            --color-border: rgba(255, 255, 255, 0.12);
+            --color-border-hover: rgba(255, 255, 255, 0.2);
+            --color-text: #F8FAFC;
+            --color-text-muted: #94A3B8;
+            --font-main: 'Plus Jakarta Sans', sans-serif;
+            --radius-sm: 0.5rem;
+            --radius-md: 0.75rem;
+            --radius-lg: 1rem;
+            --radius-xl: 1.5rem;
+        }
+
+        * { font-family: var(--font-main); box-sizing: border-box; }
+        body { background: var(--color-bg); }
 
         .glass {
             background: rgba(255, 255, 255, 0.05);
@@ -19,26 +36,43 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
+        a:focus-visible, button:focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+        }
+
+        input:focus-visible {
+            outline: none;
+            border-color: var(--color-primary);
+        }
+
         .glass-card {
-            background: rgba(255, 255, 255, 0.08);
+            background: var(--color-surface);
             backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            transition: all 0.3s ease;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            transition: background-color 0.2s ease, border-color 0.2s ease;
         }
 
         .glass-card:hover {
-            background: rgba(255, 255, 255, 0.12);
-            border-color: rgba(255, 255, 255, 0.2);
+            background: var(--color-surface-hover);
+            border-color: var(--color-border-hover);
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #E11D48 0%, #BE123C 100%);
-            transition: all 0.2s ease;
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            border-radius: var(--radius-lg);
         }
 
         .btn-primary:hover {
             transform: translateY(-1px);
             box-shadow: 0 8px 25px rgba(225, 29, 72, 0.4);
+        }
+
+        .btn-primary:focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
         }
 
         .btn-primary:disabled {
@@ -204,53 +238,77 @@
                 <p class="text-gray-400">一站式AI视频创作解决方案</p>
             </div>
 
-            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div class="glass-card p-6 rounded-2xl cursor-pointer">
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-4">
-                        <i data-lucide="download" class="w-6 h-6"></i>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="glass-card p-6 cursor-pointer">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="download" class="w-5 h-5 text-rose-400"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold mb-1">智能视频下载</h3>
+                            <p class="text-gray-400 text-sm">支持抖音、快手、小红书等多平台视频链接一键解析</p>
+                        </div>
                     </div>
-                    <h3 class="text-lg font-semibold mb-2">智能视频下载</h3>
-                    <p class="text-gray-400 text-sm">支持抖音、快手、小红书等多平台视频链接一键解析</p>
                 </div>
 
-                <div class="glass-card p-6 rounded-2xl cursor-pointer">
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4">
-                        <i data-lucide="mic" class="w-6 h-6"></i>
+                <div class="glass-card p-6 cursor-pointer">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="mic" class="w-5 h-5 text-blue-400"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold mb-1">声音克隆</h3>
+                            <p class="text-gray-400 text-sm">上传10秒音频，AI精准克隆你的声音特征</p>
+                        </div>
                     </div>
-                    <h3 class="text-lg font-semibold mb-2">声音克隆</h3>
-                    <p class="text-gray-400 text-sm">上传10秒音频，AI精准克隆你的声音特征</p>
                 </div>
 
-                <div class="glass-card p-6 rounded-2xl cursor-pointer">
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-orange-500 flex items-center justify-center mb-4">
-                        <i data-lucide="sparkles" class="w-6 h-6"></i>
+                <div class="glass-card p-6 cursor-pointer">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="sparkles" class="w-5 h-5 text-green-400"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold mb-1">AI文案改写</h3>
+                            <p class="text-gray-400 text-sm">智能改写原始文案，保持语义同时确保100%原创</p>
+                        </div>
                     </div>
-                    <h3 class="text-lg font-semibold mb-2">AI文案改写</h3>
-                    <p class="text-gray-400 text-sm">智能改写原始文案，保持语义同时确保100%原创</p>
                 </div>
 
-                <div class="glass-card p-6 rounded-2xl cursor-pointer">
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center mb-4">
-                        <i data-lucide="lipstick" class="w-6 h-6"></i>
+                <div class="glass-card p-6 cursor-pointer">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="lipstick" class="w-5 h-5 text-amber-400"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold mb-1">口型同步</h3>
+                            <p class="text-gray-400 text-sm">先进AI口型驱动技术，让数字人自然开口说话</p>
+                        </div>
                     </div>
-                    <h3 class="text-lg font-semibold mb-2">口型同步</h3>
-                    <p class="text-gray-400 text-sm">先进AI口型驱动技术，让数字人自然开口说话</p>
                 </div>
 
-                <div class="glass-card p-6 rounded-2xl cursor-pointer">
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-500 flex items-center justify-center mb-4">
-                        <i data-lucide="subtitles" class="w-6 h-6"></i>
+                <div class="glass-card p-6 cursor-pointer">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="subtitles" class="w-5 h-5 text-cyan-400"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold mb-1">自动字幕</h3>
+                            <p class="text-gray-400 text-sm">Whisper精准识别，字幕与语音完美同步</p>
+                        </div>
                     </div>
-                    <h3 class="text-lg font-semibold mb-2">自动字幕</h3>
-                    <p class="text-gray-400 text-sm">Whisper精准识别，字幕与语音完美同步</p>
                 </div>
 
-                <div class="glass-card p-6 rounded-2xl cursor-pointer">
-                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center mb-4">
-                        <i data-lucide="music" class="w-6 h-6"></i>
+                <div class="glass-card p-6 cursor-pointer">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="music" class="w-5 h-5 text-indigo-400"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold mb-1">智能配乐</h3>
+                            <p class="text-gray-400 text-sm">自动添加背景音乐，音量智能调节</p>
+                        </div>
                     </div>
-                    <h3 class="text-lg font-semibold mb-2">智能配乐</h3>
-                    <p class="text-gray-400 text-sm">自动添加背景音乐，音量智能调节</p>
                 </div>
             </div>
         </div>
