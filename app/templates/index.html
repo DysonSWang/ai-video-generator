@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI口播视频生成 - 数字人视频创作平台</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        * { font-family: 'Plus Jakarta Sans', sans-serif; }
+        body { background: #0F0F23; }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #E11D48 0%, #BE123C 100%);
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 25px rgba(225, 29, 72, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #F8FAFC 0%, #94A3B8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .step-line::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 100%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, rgba(225, 29, 72, 0.5), transparent);
+        }
+
+        .upload-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #E11D48;
+            background: rgba(225, 29, 72, 0.1);
+        }
+
+        .upload-zone .icon {
+            transition: all 0.3s ease;
+        }
+
+        .upload-zone:hover .icon {
+            transform: scale(1.1);
+            color: #E11D48;
+        }
+
+        .progress-ring {
+            transform: rotate(-90deg);
+        }
+
+        .progress-ring circle {
+            transition: stroke-dashoffset 0.5s ease;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(225, 29, 72, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(225, 29, 72, 0.6); }
+        }
+
+        .pulse-glow {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .status-badge {
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+    </style>
+</head>
+<body class="min-h-screen text-white">
+    <!-- Navbar -->
+    <nav class="fixed top-4 left-4 right-4 z-50 glass rounded-2xl px-6 py-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center">
+                    <i data-lucide="video" class="w-5 h-5"></i>
+                </div>
+                <span class="text-lg font-semibold">AI口播视频</span>
+            </div>
+            <div class="flex items-center gap-6">
+                <a href="#features" class="text-sm text-gray-400 hover:text-white transition-colors">功能</a>
+                <a href="#how-it-works" class="text-sm text-gray-400 hover:text-white transition-colors">如何使用</a>
+                <button onclick="scrollToGenerate()" class="btn-primary px-5 py-2 rounded-xl text-sm font-medium">
+                    开始创作
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="min-h-screen flex items-center justify-center px-4 pt-24 pb-16 relative overflow-hidden">
+        <!-- Background Effects -->
+        <div class="absolute inset-0 overflow-hidden">
+            <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-rose-500/20 rounded-full blur-3xl"></div>
+            <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl"></div>
+        </div>
+
+        <div class="max-w-6xl mx-auto text-center relative z-10">
+            <div class="inline-flex items-center gap-2 glass px-4 py-2 rounded-full mb-8 fade-in">
+                <span class="w-2 h-2 bg-green-400 rounded-full status-badge"></span>
+                <span class="text-sm text-gray-300">GPU 服务器已就绪</span>
+            </div>
+
+            <h1 class="text-5xl md:text-7xl font-bold mb-6 fade-in" style="animation-delay: 0.1s">
+                <span class="gradient-text">AI口播视频生成</span>
+            </h1>
+            <p class="text-xl text-gray-400 mb-8 max-w-2xl mx-auto fade-in" style="animation-delay: 0.2s">
+                上传你的形象和声音，AI自动克隆音色、同步口型<br class="hidden md:block">
+                轻松生成原创口播视频
+            </p>
+
+            <div class="flex flex-wrap justify-center gap-4 fade-in" style="animation-delay: 0.3s">
+                <button onclick="scrollToGenerate()" class="btn-primary px-8 py-4 rounded-2xl text-lg font-semibold flex items-center gap-2 pulse-glow">
+                    <i data-lucide="sparkles" class="w-5 h-5"></i>
+                    开始免费使用
+                </button>
+                <a href="#how-it-works" class="glass px-8 py-4 rounded-2xl text-lg font-medium flex items-center gap-2 hover:bg-white/10 transition-colors">
+                    <i data-lucide="play-circle" class="w-5 h-5"></i>
+                    了解更多
+                </a>
+            </div>
+
+            <!-- Stats -->
+            <div class="grid grid-cols-3 gap-8 mt-16 max-w-2xl mx-auto fade-in" style="animation-delay: 0.4s">
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-rose-400">10s</div>
+                    <div class="text-sm text-gray-500">最短生成时间</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-rose-400">4步</div>
+                    <div class="text-sm text-gray-500">简单操作流程</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-rose-400">100%</div>
+                    <div class="text-sm text-gray-500">原创内容</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-24 px-4">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4">核心功能</h2>
+                <p class="text-gray-400">一站式AI视频创作解决方案</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="glass-card p-6 rounded-2xl cursor-pointer">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-4">
+                        <i data-lucide="download" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">智能视频下载</h3>
+                    <p class="text-gray-400 text-sm">支持抖音、快手、小红书等多平台视频链接一键解析</p>
+                </div>
+
+                <div class="glass-card p-6 rounded-2xl cursor-pointer">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4">
+                        <i data-lucide="mic" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">声音克隆</h3>
+                    <p class="text-gray-400 text-sm">上传10秒音频，AI精准克隆你的声音特征</p>
+                </div>
+
+                <div class="glass-card p-6 rounded-2xl cursor-pointer">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-orange-500 flex items-center justify-center mb-4">
+                        <i data-lucide="sparkles" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">AI文案改写</h3>
+                    <p class="text-gray-400 text-sm">智能改写原始文案，保持语义同时确保100%原创</p>
+                </div>
+
+                <div class="glass-card p-6 rounded-2xl cursor-pointer">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center mb-4">
+                        <i data-lucide="lipstick" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">口型同步</h3>
+                    <p class="text-gray-400 text-sm">先进AI口型驱动技术，让数字人自然开口说话</p>
+                </div>
+
+                <div class="glass-card p-6 rounded-2xl cursor-pointer">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-500 flex items-center justify-center mb-4">
+                        <i data-lucide="subtitles" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">自动字幕</h3>
+                    <p class="text-gray-400 text-sm">Whisper精准识别，字幕与语音完美同步</p>
+                </div>
+
+                <div class="glass-card p-6 rounded-2xl cursor-pointer">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center mb-4">
+                        <i data-lucide="music" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">智能配乐</h3>
+                    <p class="text-gray-400 text-sm">自动添加背景音乐，音量智能调节</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" class="py-24 px-4 relative">
+        <div class="absolute inset-0 bg-gradient-to-b from-transparent via-rose-500/5 to-transparent"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4">如何使用</h2>
+                <p class="text-gray-400">简单4步，快速生成原创口播视频</p>
+            </div>
+
+            <div class="grid md:grid-cols-4 gap-8">
+                <div class="relative text-center">
+                    <div class="w-16 h-16 rounded-2xl glass flex items-center justify-center mx-auto mb-4">
+                        <span class="text-2xl font-bold text-rose-400">1</span>
+                    </div>
+                    <h3 class="font-semibold mb-2">输入同行链接</h3>
+                    <p class="text-sm text-gray-400">粘贴抖音/快手视频链接，AI提取文案</p>
+                </div>
+
+                <div class="relative text-center">
+                    <div class="w-16 h-16 rounded-2xl glass flex items-center justify-center mx-auto mb-4">
+                        <span class="text-2xl font-bold text-rose-400">2</span>
+                    </div>
+                    <h3 class="font-semibold mb-2">上传形象声音</h3>
+                    <p class="text-sm text-gray-400">上传你的视频和语音参考（10-20秒）</p>
+                </div>
+
+                <div class="relative text-center">
+                    <div class="w-16 h-16 rounded-2xl glass flex items-center justify-center mx-auto mb-4">
+                        <span class="text-2xl font-bold text-rose-400">3</span>
+                    </div>
+                    <h3 class="font-semibold mb-2">AI智能处理</h3>
+                    <p class="text-sm text-gray-400">自动改写文案、克隆声音、生成口型</p>
+                </div>
+
+                <div class="relative text-center">
+                    <div class="w-16 h-16 rounded-2xl glass flex items-center justify-center mx-auto mb-4">
+                        <span class="text-2xl font-bold text-rose-400">4</span>
+                    </div>
+                    <h3 class="font-semibold mb-2">下载生成结果</h3>
+                    <p class="text-sm text-gray-400">预览效果，一键下载最终视频</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Generate Section -->
+    <section id="generate" class="py-24 px-4">
+        <div class="max-w-4xl mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4">开始创作</h2>
+                <p class="text-gray-400">填写以下信息，AI将自动为你生成原创口播视频</p>
+            </div>
+
+            <div class="glass-card p-8 rounded-3xl">
+                <!-- Step 1: Video Link -->
+                <div class="mb-8">
+                    <label class="block text-sm font-medium mb-3 flex items-center gap-2">
+                        <i data-lucide="link" class="w-4 h-4 text-rose-400"></i>
+                        同行视频链接
+                    </label>
+                    <div class="upload-zone p-4 rounded-xl">
+                        <div class="flex items-center gap-4">
+                            <i data-lucide="video" class="w-8 h-8 text-gray-500"></i>
+                            <input
+                                type="text"
+                                id="videoLink"
+                                placeholder="粘贴抖音、快手或小红书视频链接..."
+                                class="flex-1 bg-transparent border-none outline-none text-white placeholder-gray-500"
+                            >
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: User Video -->
+                <div class="mb-8">
+                    <label class="block text-sm font-medium mb-3 flex items-center gap-2">
+                        <i data-lucide="user" class="w-4 h-4 text-rose-400"></i>
+                        你的形象视频
+                    </label>
+                    <div class="upload-zone p-8 rounded-xl text-center cursor-pointer" onclick="document.getElementById('userVideo').click()">
+                        <input type="file" id="userVideo" accept="video/*" class="hidden" onchange="handleFileSelect(this, 'userVideoPreview')">
+                        <div id="userVideoPreview">
+                            <i data-lucide="upload-cloud" class="w-12 h-12 mx-auto mb-3 text-gray-500 icon"></i>
+                            <p class="text-gray-400">点击或拖拽上传视频</p>
+                            <p class="text-xs text-gray-500 mt-2">支持 MP4、MOV、AVI 格式</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: User Audio -->
+                <div class="mb-8">
+                    <label class="block text-sm font-medium mb-3 flex items-center gap-2">
+                        <i data-lucide="mic" class="w-4 h-4 text-rose-400"></i>
+                        你的声音参考
+                    </label>
+                    <div class="upload-zone p-8 rounded-xl text-center cursor-pointer" onclick="document.getElementById('userAudio').click()">
+                        <input type="file" id="userAudio" accept="audio/*" class="hidden" onchange="handleFileSelect(this, 'userAudioPreview')">
+                        <div id="userAudioPreview">
+                            <i data-lucide="music" class="w-12 h-12 mx-auto mb-3 text-gray-500 icon"></i>
+                            <p class="text-gray-400">点击或拖拽上传音频</p>
+                            <p class="text-xs text-gray-500 mt-2">建议时长 10-20 秒</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4: Options -->
+                <div class="mb-8">
+                    <label class="block text-sm font-medium mb-3 flex items-center gap-2">
+                        <i data-lucide="settings" class="w-4 h-4 text-rose-400"></i>
+                        生成选项
+                    </label>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div class="glass p-4 rounded-xl">
+                            <label class="block text-xs text-gray-400 mb-2">改写风格</label>
+                            <select id="rewriteStyle" class="w-full bg-transparent border-none outline-none text-white">
+                                <option value="口语化" class="bg-gray-800">口语化</option>
+                                <option value="专业" class="bg-gray-800">专业正式</option>
+                                <option value="活泼" class="bg-gray-800">活泼有趣</option>
+                            </select>
+                        </div>
+                        <div class="glass p-4 rounded-xl">
+                            <label class="block text-xs text-gray-400 mb-2">口型同步引擎</label>
+                            <select id="lipSyncProvider" class="w-full bg-transparent border-none outline-none text-white">
+                                <option value="infinite_talk" class="bg-gray-800">InfiniteTalk (推荐)</option>
+                                <option value="kling" class="bg-gray-800">可灵 Kling</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4 mt-4">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="addSubtitle" checked class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-rose-500 focus:ring-rose-500">
+                            <span class="text-sm">添加字幕</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Generate Button -->
+                <button id="generateBtn" onclick="startGeneration()" class="btn-primary w-full py-4 rounded-2xl text-lg font-semibold flex items-center justify-center gap-2">
+                    <i data-lucide="rocket" class="w-5 h-5"></i>
+                    <span>开始生成</span>
+                </button>
+            </div>
+
+            <!-- Progress Section (Hidden by default) -->
+            <div id="progressSection" class="hidden mt-8">
+                <div class="glass-card p-8 rounded-3xl">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-semibold flex items-center gap-2">
+                            <i data-lucide="loader-2" class="w-5 h-5 text-rose-400 animate-spin"></i>
+                            正在生成...
+                        </h3>
+                        <span id="progressPercent" class="text-2xl font-bold text-rose-400">0%</span>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="w-full h-2 bg-gray-700 rounded-full mb-6 overflow-hidden">
+                        <div id="progressBar" class="h-full bg-gradient-to-r from-rose-500 to-pink-500 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+
+                    <!-- Status Messages -->
+                    <div id="statusMessages" class="space-y-2">
+                        <div class="flex items-center gap-3 text-gray-400">
+                            <i data-lucide="circle" class="w-2 h-2 text-gray-600"></i>
+                            <span>准备中...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Result Section (Hidden by default) -->
+            <div id="resultSection" class="hidden mt-8">
+                <div class="glass-card p-8 rounded-3xl text-center">
+                    <div class="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
+                        <i data-lucide="check-circle" class="w-8 h-8 text-green-400"></i>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">生成完成!</h3>
+                    <p class="text-gray-400 mb-6">你的AI口播视频已准备就绪</p>
+
+                    <div class="flex flex-wrap justify-center gap-4">
+                        <button onclick="downloadResult()" class="btn-primary px-6 py-3 rounded-xl font-medium flex items-center gap-2">
+                            <i data-lucide="download" class="w-5 h-5"></i>
+                            下载视频
+                        </button>
+                        <button onclick="resetForm()" class="glass px-6 py-3 rounded-xl font-medium flex items-center gap-2 hover:bg-white/10 transition-colors">
+                            <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                            继续创作
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-12 px-4 border-t border-white/10">
+        <div class="max-w-6xl mx-auto text-center">
+            <div class="flex items-center justify-center gap-3 mb-4">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center">
+                    <i data-lucide="video" class="w-4 h-4"></i>
+                </div>
+                <span class="font-semibold">AI口播视频生成</span>
+            </div>
+            <p class="text-sm text-gray-500">基于 InfiniteTalk + 阿里云百炼 + 硅基流动驱动</p>
+        </div>
+    </footer>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // Scroll to generate section
+        function scrollToGenerate() {
+            document.getElementById('generate').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Handle file selection
+        function handleFileSelect(input, previewId) {
+            const file = input.files[0];
+            if (file) {
+                const preview = document.getElementById(previewId);
+                const fileType = file.type.split('/')[0];
+
+                if (fileType === 'video') {
+                    preview.innerHTML = `
+                        <div class="flex items-center justify-center gap-3">
+                            <i data-lucide="film" class="w-8 h-8 text-rose-400"></i>
+                            <span class="text-white">${file.name}</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">${(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                    `;
+                } else if (fileType === 'audio') {
+                    preview.innerHTML = `
+                        <div class="flex items-center justify-center gap-3">
+                            <i data-lucide="music" class="w-8 h-8 text-rose-400"></i>
+                            <span class="text-white">${file.name}</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">${(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                    `;
+                }
+                lucide.createIcons();
+            }
+        }
+
+        // Update progress
+        function updateProgress(percent, message) {
+            document.getElementById('progressPercent').textContent = percent + '%';
+            document.getElementById('progressBar').style.width = percent + '%';
+
+            const messages = document.getElementById('statusMessages');
+            const steps = messages.querySelectorAll('.flex.items-center');
+            steps.forEach(step => {
+                step.querySelector('i').classList.remove('text-rose-400');
+                step.querySelector('i').classList.add('text-green-400');
+                step.classList.remove('text-gray-400');
+                step.classList.add('text-green-400');
+            });
+
+            const newStep = document.createElement('div');
+            newStep.className = 'flex items-center gap-3 text-gray-400';
+            newStep.innerHTML = `
+                <i data-lucide="loader-2" class="w-4 h-4 text-rose-400 animate-spin"></i>
+                <span>${message}</span>
+            `;
+            messages.appendChild(newStep);
+            lucide.createIcons();
+        }
+
+        // Start generation
+        async function startGeneration() {
+            const videoLink = document.getElementById('videoLink').value;
+            const userVideo = document.getElementById('userVideo').files[0];
+            const userAudio = document.getElementById('userAudio').files[0];
+            const rewriteStyle = document.getElementById('rewriteStyle').value;
+            const lipSyncProvider = document.getElementById('lipSyncProvider').value;
+            const addSubtitle = document.getElementById('addSubtitle').checked;
+
+            if (!videoLink) {
+                alert('请输入同行视频链接');
+                return;
+            }
+            if (!userVideo) {
+                alert('请上传你的形象视频');
+                return;
+            }
+            if (!userAudio) {
+                alert('请上传你的声音参考');
+                return;
+            }
+
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>上传中...</span>';
+            lucide.createIcons();
+
+            // Show progress
+            document.getElementById('progressSection').classList.remove('hidden');
+
+            // Upload files first
+            try {
+                updateProgress(5, '上传视频文件...');
+                const videoFormData = new FormData();
+                videoFormData.append('file', userVideo);
+                const videoRes = await fetch('/api/upload/video', { method: 'POST', body: videoFormData });
+                const videoData = await videoRes.json();
+                const videoId = videoData.video_id;
+
+                updateProgress(15, '上传音频文件...');
+                const audioFormData = new FormData();
+                audioFormData.append('file', userAudio);
+                const audioRes = await fetch('/api/upload/audio', { method: 'POST', body: audioFormData });
+                const audioData = await audioRes.json();
+                const audioId = audioData.audio_id;
+
+                // Start pipeline
+                updateProgress(20, '启动AI处理流程...');
+                const pipelineRes = await fetch('/api/pipeline/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        video_link: videoLink,
+                        user_video_id: videoId,
+                        user_audio_id: audioId,
+                        options: {
+                            rewrite_style: rewriteStyle,
+                            lip_sync_provider: lipSyncProvider,
+                            add_subtitle: addSubtitle
+                        }
+                    })
+                });
+                const pipelineData = await pipelineRes.json();
+                const taskId = pipelineData.task_id;
+
+                // Poll for progress
+                pollTaskStatus(taskId, 20);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('生成失败: ' + error.message);
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
+                lucide.createIcons();
+            }
+        }
+
+        // Poll task status
+        async function pollTaskStatus(taskId, startProgress) {
+            const steps = [
+                { progress: 30, message: '下载同行视频...' },
+                { progress: 40, message: '识别语音文案...' },
+                { progress: 50, message: 'AI改写文案...' },
+                { progress: 60, message: '克隆声音...' },
+                { progress: 70, message: '生成口型同步...' },
+                { progress: 85, message: '添加字幕...' },
+                { progress: 95, message: '合成最终视频...' }
+            ];
+
+            let stepIndex = 0;
+
+            const poll = async () => {
+                try {
+                    const res = await fetch(`/api/task/${taskId}`);
+                    const data = await res.json();
+
+                    // Update progress based on current step
+                    if (stepIndex < steps.length && data.progress >= steps[stepIndex].progress) {
+                        updateProgress(steps[stepIndex].progress, steps[stepIndex].message);
+                        stepIndex++;
+                    }
+
+                    if (data.status === 'completed') {
+                        updateProgress(100, '完成!');
+                        document.getElementById('progressSection').classList.add('hidden');
+                        document.getElementById('resultSection').classList.remove('hidden');
+                        window.currentTaskId = taskId;
+                    } else if (data.status === 'failed') {
+                        alert('生成失败: ' + data.message);
+                        document.getElementById('progressSection').classList.add('hidden');
+                        document.getElementById('generateBtn').disabled = false;
+                        document.getElementById('generateBtn').innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
+                        lucide.createIcons();
+                    } else {
+                        setTimeout(poll, 2000);
+                    }
+                } catch (error) {
+                    console.error('Poll error:', error);
+                    setTimeout(poll, 5000);
+                }
+            };
+
+            poll();
+        }
+
+        // Download result
+        function downloadResult() {
+            if (window.currentTaskId) {
+                window.open(`/api/result/${window.currentTaskId}`, '_blank');
+            }
+        }
+
+        // Reset form
+        function resetForm() {
+            document.getElementById('videoLink').value = '';
+            document.getElementById('userVideo').value = '';
+            document.getElementById('userAudio').value = '';
+            document.getElementById('userVideoPreview').innerHTML = `
+                <i data-lucide="upload-cloud" class="w-12 h-12 mx-auto mb-3 text-gray-500 icon"></i>
+                <p class="text-gray-400">点击或拖拽上传视频</p>
+                <p class="text-xs text-gray-500 mt-2">支持 MP4、MOV、AVI 格式</p>
+            `;
+            document.getElementById('userAudioPreview').innerHTML = `
+                <i data-lucide="music" class="w-12 h-12 mx-auto mb-3 text-gray-500 icon"></i>
+                <p class="text-gray-400">点击或拖拽上传音频</p>
+                <p class="text-xs text-gray-500 mt-2">建议时长 10-20 秒</p>
+            `;
+            document.getElementById('progressSection').classList.add('hidden');
+            document.getElementById('resultSection').classList.add('hidden');
+            document.getElementById('generateBtn').disabled = false;
+            document.getElementById('generateBtn').innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
+            lucide.createIcons();
+        }
+
+        // Drag and drop
+        ['userVideo', 'userAudio'].forEach(id => {
+            const el = document.getElementById(id)?.parentElement;
+            if (el) {
+                el.addEventListener('dragover', e => {
+                    e.preventDefault();
+                    el.classList.add('dragover');
+                });
+                el.addEventListener('dragleave', () => {
+                    el.classList.remove('dragover');
+                });
+                el.addEventListener('drop', e => {
+                    e.preventDefault();
+                    el.classList.remove('dragover');
+                    const input = document.getElementById(id);
+                    input.files = e.dataTransfer.files;
+                    handleFileSelect(input, id + 'Preview');
+                });
+            }
+        });
+    </script>
+</body>
+</html>
