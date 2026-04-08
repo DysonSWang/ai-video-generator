@@ -316,44 +316,64 @@
 
     <!-- How It Works -->
     <section id="how-it-works" class="py-24 px-4 relative">
-        <div class="absolute inset-0 bg-gradient-to-b from-transparent via-rose-500/5 to-transparent"></div>
-        <div class="max-w-5xl mx-auto relative z-10">
-            <div class="text-center mb-16">
-                <h2 class="text-3xl md:text-4xl font-bold mb-4">如何使用</h2>
+        <div class="max-w-5xl mx-auto">
+            <div class="mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold mb-2">如何使用</h2>
                 <p class="text-gray-400">简单4步，快速生成原创口播视频</p>
             </div>
 
-            <div class="grid md:grid-cols-4 gap-8">
-                <div class="relative text-center">
-                    <div class="w-16 h-16 rounded-2xl glass flex items-center justify-center mx-auto mb-4">
-                        <span class="text-2xl font-bold text-rose-400">1</span>
-                    </div>
-                    <h3 class="font-semibold mb-2">输入同行链接</h3>
-                    <p class="text-sm text-gray-400">粘贴抖音/快手视频链接，AI提取文案</p>
-                </div>
+            <div class="relative">
+                <!-- Timeline line -->
+                <div class="hidden md:block absolute top-6 left-0 right-0 h-px bg-gradient-to-r from-transparent via-rose-500/30 to-transparent"></div>
 
-                <div class="relative text-center">
-                    <div class="w-16 h-16 rounded-2xl glass flex items-center justify-center mx-auto mb-4">
-                        <span class="text-2xl font-bold text-rose-400">2</span>
+                <div class="grid md:grid-cols-4 gap-8 md:gap-4">
+                    <div class="relative">
+                        <div class="flex md:flex-col items-center md:items-center gap-4 md:block">
+                            <div class="w-12 h-12 rounded-full bg-rose-500/20 border-2 border-rose-500 flex items-center justify-center flex-shrink-0 z-10">
+                                <span class="text-lg font-bold text-rose-400">1</span>
+                            </div>
+                            <div class="md:text-center md:mt-4">
+                                <h3 class="font-semibold mb-1">输入链接</h3>
+                                <p class="text-sm text-gray-500">粘贴同行视频链接</p>
+                            </div>
+                        </div>
                     </div>
-                    <h3 class="font-semibold mb-2">上传形象声音</h3>
-                    <p class="text-sm text-gray-400">上传你的视频和语音参考（10-20秒）</p>
-                </div>
 
-                <div class="relative text-center">
-                    <div class="w-16 h-16 rounded-2xl glass flex items-center justify-center mx-auto mb-4">
-                        <span class="text-2xl font-bold text-rose-400">3</span>
+                    <div class="relative">
+                        <div class="flex md:flex-col items-center md:items-center gap-4 md:block">
+                            <div class="w-12 h-12 rounded-full bg-rose-500/20 border-2 border-rose-500/50 flex items-center justify-center flex-shrink-0 z-10">
+                                <span class="text-lg font-bold text-rose-400/70">2</span>
+                            </div>
+                            <div class="md:text-center md:mt-4">
+                                <h3 class="font-semibold mb-1">上传素材</h3>
+                                <p class="text-sm text-gray-500">你的视频和声音</p>
+                            </div>
+                        </div>
                     </div>
-                    <h3 class="font-semibold mb-2">AI智能处理</h3>
-                    <p class="text-sm text-gray-400">自动改写文案、克隆声音、生成口型</p>
-                </div>
 
-                <div class="relative text-center">
-                    <div class="w-16 h-16 rounded-2xl glass flex items-center justify-center mx-auto mb-4">
-                        <span class="text-2xl font-bold text-rose-400">4</span>
+                    <div class="relative">
+                        <div class="flex md:flex-col items-center md:items-center gap-4 md:block">
+                            <div class="w-12 h-12 rounded-full bg-rose-500/20 border-2 border-rose-500/30 flex items-center justify-center flex-shrink-0 z-10">
+                                <span class="text-lg font-bold text-rose-400/50">3</span>
+                            </div>
+                            <div class="md:text-center md:mt-4">
+                                <h3 class="font-semibold mb-1">AI处理</h3>
+                                <p class="text-sm text-gray-500">克隆、改写、口型</p>
+                            </div>
+                        </div>
                     </div>
-                    <h3 class="font-semibold mb-2">下载生成结果</h3>
-                    <p class="text-sm text-gray-400">预览效果，一键下载最终视频</p>
+
+                    <div class="relative">
+                        <div class="flex md:flex-col items-center md:items-center gap-4 md:block">
+                            <div class="w-12 h-12 rounded-full bg-rose-500/20 border-2 border-rose-500/20 flex items-center justify-center flex-shrink-0 z-10">
+                                <span class="text-lg font-bold text-rose-400/30">4</span>
+                            </div>
+                            <div class="md:text-center md:mt-4">
+                                <h3 class="font-semibold mb-1">下载结果</h3>
+                                <p class="text-sm text-gray-500">预览并下载视频</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -361,22 +381,22 @@
 
     <!-- Generate Section -->
     <section id="generate" class="py-24 px-4">
-        <div class="max-w-4xl mx-auto">
-            <div class="text-center mb-12">
-                <h2 class="text-3xl md:text-4xl font-bold mb-4">开始创作</h2>
+        <div class="max-w-3xl mx-auto">
+            <div class="mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold mb-2">开始创作</h2>
                 <p class="text-gray-400">填写以下信息，AI将自动为你生成原创口播视频</p>
             </div>
 
-            <div class="glass-card p-8 rounded-3xl">
+            <div class="space-y-6">
                 <!-- Step 1: Video Link -->
-                <div class="mb-8">
+                <div class="glass-card p-6">
                     <label class="block text-sm font-medium mb-3 flex items-center gap-2">
                         <i data-lucide="link" class="w-4 h-4 text-rose-400"></i>
                         同行视频链接
                     </label>
-                    <div class="upload-zone p-4 rounded-xl">
+                    <div class="upload-zone p-4 rounded-lg">
                         <div class="flex items-center gap-4">
-                            <i data-lucide="video" class="w-8 h-8 text-gray-500"></i>
+                            <i data-lucide="video" class="w-6 h-6 text-gray-500"></i>
                             <input
                                 type="text"
                                 id="videoLink"
@@ -388,15 +408,15 @@
                 </div>
 
                 <!-- Step 2: User Video -->
-                <div class="mb-8">
+                <div class="glass-card p-6">
                     <label class="block text-sm font-medium mb-3 flex items-center gap-2">
                         <i data-lucide="user" class="w-4 h-4 text-rose-400"></i>
                         你的形象视频
                     </label>
-                    <div class="upload-zone p-8 rounded-xl text-center cursor-pointer" onclick="document.getElementById('userVideo').click()">
+                    <div class="upload-zone p-6 rounded-lg text-center cursor-pointer" onclick="document.getElementById('userVideo').click()">
                         <input type="file" id="userVideo" accept="video/*" class="hidden" onchange="handleFileSelect(this, 'userVideoPreview')">
                         <div id="userVideoPreview">
-                            <i data-lucide="upload-cloud" class="w-12 h-12 mx-auto mb-3 text-gray-500 icon"></i>
+                            <i data-lucide="upload-cloud" class="w-10 h-10 mx-auto mb-3 text-gray-500 icon"></i>
                             <p class="text-gray-400">点击或拖拽上传视频</p>
                             <p class="text-xs text-gray-500 mt-2">支持 MP4、MOV、AVI 格式</p>
                         </div>
@@ -404,15 +424,15 @@
                 </div>
 
                 <!-- Step 3: User Audio -->
-                <div class="mb-8">
+                <div class="glass-card p-6">
                     <label class="block text-sm font-medium mb-3 flex items-center gap-2">
                         <i data-lucide="mic" class="w-4 h-4 text-rose-400"></i>
                         你的声音参考
                     </label>
-                    <div class="upload-zone p-8 rounded-xl text-center cursor-pointer" onclick="document.getElementById('userAudio').click()">
+                    <div class="upload-zone p-6 rounded-lg text-center cursor-pointer" onclick="document.getElementById('userAudio').click()">
                         <input type="file" id="userAudio" accept="audio/*" class="hidden" onchange="handleFileSelect(this, 'userAudioPreview')">
                         <div id="userAudioPreview">
-                            <i data-lucide="music" class="w-12 h-12 mx-auto mb-3 text-gray-500 icon"></i>
+                            <i data-lucide="music" class="w-10 h-10 mx-auto mb-3 text-gray-500 icon"></i>
                             <p class="text-gray-400">点击或拖拽上传音频</p>
                             <p class="text-xs text-gray-500 mt-2">建议时长 10-20 秒</p>
                         </div>
@@ -420,13 +440,13 @@
                 </div>
 
                 <!-- Step 4: Options -->
-                <div class="mb-8">
+                <div class="glass-card p-6">
                     <label class="block text-sm font-medium mb-3 flex items-center gap-2">
                         <i data-lucide="settings" class="w-4 h-4 text-rose-400"></i>
                         生成选项
                     </label>
-                    <div class="grid md:grid-cols-2 gap-4">
-                        <div class="glass p-4 rounded-xl">
+                    <div class="grid sm:grid-cols-2 gap-4">
+                        <div class="glass p-4 rounded-lg">
                             <label class="block text-xs text-gray-400 mb-2">改写风格</label>
                             <select id="rewriteStyle" class="w-full bg-transparent border-none outline-none text-white">
                                 <option value="口语化" class="bg-gray-800">口语化</option>
@@ -434,7 +454,7 @@
                                 <option value="活泼" class="bg-gray-800">活泼有趣</option>
                             </select>
                         </div>
-                        <div class="glass p-4 rounded-xl">
+                        <div class="glass p-4 rounded-lg">
                             <label class="block text-xs text-gray-400 mb-2">口型同步引擎</label>
                             <select id="lipSyncProvider" class="w-full bg-transparent border-none outline-none text-white">
                                 <option value="infinite_talk" class="bg-gray-800">InfiniteTalk (推荐)</option>
@@ -442,8 +462,8 @@
                             </select>
                         </div>
                     </div>
-                    <div class="flex items-center gap-4 mt-4">
-                        <label class="flex items-center gap-2 cursor-pointer">
+                    <div class="mt-4">
+                        <label class="flex items-center gap-3 cursor-pointer">
                             <input type="checkbox" id="addSubtitle" checked class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-rose-500 focus:ring-rose-500">
                             <span class="text-sm">添加字幕</span>
                         </label>
@@ -451,7 +471,7 @@
                 </div>
 
                 <!-- Generate Button -->
-                <button id="generateBtn" onclick="startGeneration()" class="btn-primary w-full py-4 rounded-2xl text-lg font-semibold flex items-center justify-center gap-2">
+                <button id="generateBtn" onclick="startGeneration()" class="btn-primary w-full py-4 rounded-xl text-lg font-semibold flex items-center justify-center gap-2">
                     <i data-lucide="rocket" class="w-5 h-5"></i>
                     <span>开始生成</span>
                 </button>
@@ -459,7 +479,7 @@
 
             <!-- Progress Section (Hidden by default) -->
             <div id="progressSection" class="hidden mt-8">
-                <div class="glass-card p-8 rounded-3xl">
+                <div class="glass-card p-6 rounded-xl">
                     <div class="flex items-center justify-between mb-6">
                         <h3 class="text-lg font-semibold flex items-center gap-2">
                             <i data-lucide="loader-2" class="w-5 h-5 text-rose-400 animate-spin"></i>
@@ -485,9 +505,9 @@
 
             <!-- Result Section (Hidden by default) -->
             <div id="resultSection" class="hidden mt-8">
-                <div class="glass-card p-8 rounded-3xl text-center">
-                    <div class="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
-                        <i data-lucide="check-circle" class="w-8 h-8 text-green-400"></i>
+                <div class="glass-card p-6 rounded-xl text-center">
+                    <div class="w-14 h-14 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
+                        <i data-lucide="check-circle" class="w-7 h-7 text-green-400"></i>
                     </div>
                     <h3 class="text-xl font-semibold mb-2">生成完成!</h3>
                     <p class="text-gray-400 mb-6">你的AI口播视频已准备就绪</p>
@@ -508,15 +528,17 @@
     </section>
 
     <!-- Footer -->
-    <footer class="py-12 px-4 border-t border-white/10">
-        <div class="max-w-6xl mx-auto text-center">
-            <div class="flex items-center justify-center gap-3 mb-4">
-                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center">
-                    <i data-lucide="video" class="w-4 h-4"></i>
-                </div>
-                <span class="font-semibold">AI口播视频生成</span>
+    <footer class="py-8 px-4 border-t border-white/5">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i data-lucide="zap" class="w-4 h-4 text-rose-400"></i>
+                <span class="text-sm text-gray-500">AI口播视频生成</span>
             </div>
-            <p class="text-sm text-gray-500">基于 InfiniteTalk + 阿里云百炼 + 硅基流动驱动</p>
+            <div class="flex items-center gap-4">
+                <a href="#features" class="text-sm text-gray-500 hover:text-white transition-colors">功能</a>
+                <a href="#how-it-works" class="text-sm text-gray-500 hover:text-white transition-colors">如何用</a>
+                <a href="#generate" class="text-sm text-gray-500 hover:text-white transition-colors">创作</a>
+            </div>
         </div>
     </footer>
 
