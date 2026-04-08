@@ -581,60 +581,118 @@
 
         // Update progress
         function updateProgress(percent, message) {
-            document.getElementById('progressPercent').textContent = percent + '%';
-            document.getElementById('progressBar').style.width = percent + '%';
-
+            const progressPercent = document.getElementById('progressPercent');
+            const progressBar = document.getElementById('progressBar');
             const messages = document.getElementById('statusMessages');
-            const steps = messages.querySelectorAll('.flex.items-center');
-            steps.forEach(step => {
-                const icon = step.querySelector('svg') || step.querySelector('i');
-                if (icon) {
-                    icon.classList.remove('text-rose-400');
-                    icon.classList.add('text-green-400');
-                }
-                step.classList.remove('text-gray-400');
-                step.classList.add('text-green-400');
-            });
 
-            const newStep = document.createElement('div');
-            newStep.className = 'flex items-center gap-3 text-gray-400';
-            newStep.innerHTML = `
-                <i data-lucide="loader-2" class="w-4 h-4 text-rose-400 animate-spin"></i>
-                <span>${message}</span>
-            `;
-            messages.appendChild(newStep);
-            lucide.createIcons();
+            if (progressPercent) progressPercent.textContent = percent + '%';
+            if (progressBar) progressBar.style.width = percent + '%';
+
+            if (messages) {
+                const steps = messages.querySelectorAll('.flex.items-center');
+                steps.forEach(step => {
+                    const icon = step.querySelector('svg') || step.querySelector('i');
+                    if (icon) {
+                        icon.classList.remove('text-rose-400');
+                        icon.classList.add('text-green-400');
+                    }
+                    step.classList.remove('text-gray-400');
+                    step.classList.add('text-green-400');
+                });
+
+                const newStep = document.createElement('div');
+                newStep.className = 'flex items-center gap-3 text-gray-400';
+                newStep.innerHTML = `
+                    <i data-lucide="loader-2" class="w-4 h-4 text-rose-400 animate-spin"></i>
+                    <span>${message}</span>
+                `;
+                messages.appendChild(newStep);
+                lucide.createIcons();
+            }
         }
 
         // Start generation
         async function startGeneration() {
-            const videoLink = document.getElementById('videoLink').value;
-            const userVideo = document.getElementById('userVideo').files[0];
-            const userAudio = document.getElementById('userAudio').files[0];
-            const rewriteStyle = document.getElementById('rewriteStyle').value;
-            const lipSyncProvider = document.getElementById('lipSyncProvider').value;
-            const addSubtitle = document.getElementById('addSubtitle').checked;
+            const videoLink = document.getElementById('videoLink');
+            const userVideo = document.getElementById('userVideo');
+            const userAudio = document.getElementById('userAudio');
+            const rewriteStyle = document.getElementById('rewriteStyle');
+            const lipSyncProvider = document.getElementById('lipSyncProvider');
+            const addSubtitle = document.getElementById('addSubtitle');
 
-            if (!videoLink) {
+            if (!videoLink?.value) {
                 alert('请输入同行视频链接');
                 return;
             }
-            if (!userVideo) {
+            if (!userVideo?.files[0]) {
                 alert('请上传你的形象视频');
                 return;
             }
-            if (!userAudio) {
+            if (!userAudio?.files[0]) {
                 alert('请上传你的声音参考');
                 return;
             }
 
             const btn = document.getElementById('generateBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>上传中...</span>';
-            lucide.createIcons();
+            const progressSection = document.getElementById('progressSection');
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>上传中...</span>';
+                lucide.createIcons();
+            }
 
             // Show progress
-            document.getElementById('progressSection').classList.remove('hidden');
+            if (progressSection) progressSection.classList.remove('hidden');
+
+            try {
+                // Upload files
+                updateProgress(5, '上传视频文件...');
+                const videoFormData = new FormData();
+                videoFormData.append('file', userVideo.files[0]);
+                const videoRes = await fetch('/api/upload/video', { method: 'POST', body: videoFormData });
+                const videoData = await videoRes.json();
+                const videoId = videoData.video_id;
+
+                updateProgress(15, '上传音频文件...');
+                const audioFormData = new FormData();
+                audioFormData.append('file', userAudio.files[0]);
+                const audioRes = await fetch('/api/upload/audio', { method: 'POST', body: audioFormData });
+                const audioData = await audioRes.json();
+                const audioId = audioData.audio_id;
+
+                // Start pipeline
+                updateProgress(20, '启动AI处理流程...');
+                const pipelineRes = await fetch('/api/pipeline/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        video_link: videoLink.value,
+                        user_video_id: videoId,
+                        user_audio_id: audioId,
+                        options: {
+                            rewrite_style: rewriteStyle?.value || '口语化',
+                            lip_sync_provider: lipSyncProvider?.value || 'infinite_talk',
+                            add_subtitle: addSubtitle?.checked ?? true
+                        }
+                    })
+                });
+                const pipelineData = await pipelineRes.json();
+                const taskId = pipelineData.task_id;
+
+                // Poll for progress
+                pollTaskStatus(taskId, 20);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('生成失败: ' + error.message);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
+                    lucide.createIcons();
+                }
+                if (progressSection) progressSection.classList.add('hidden');
+            }
+        }
 
             // Upload files first
             try {
@@ -709,15 +767,21 @@
 
                     if (data.status === 'completed') {
                         updateProgress(100, '完成!');
-                        document.getElementById('progressSection').classList.add('hidden');
-                        document.getElementById('resultSection').classList.remove('hidden');
+                        const ps = document.getElementById('progressSection');
+                        const rs = document.getElementById('resultSection');
+                        if (ps) ps.classList.add('hidden');
+                        if (rs) rs.classList.remove('hidden');
                         window.currentTaskId = taskId;
                     } else if (data.status === 'failed') {
                         alert('生成失败: ' + data.message);
-                        document.getElementById('progressSection').classList.add('hidden');
-                        document.getElementById('generateBtn').disabled = false;
-                        document.getElementById('generateBtn').innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
-                        lucide.createIcons();
+                        const ps = document.getElementById('progressSection');
+                        const btn = document.getElementById('generateBtn');
+                        if (ps) ps.classList.add('hidden');
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
+                            lucide.createIcons();
+                        }
                     } else {
                         setTimeout(poll, 2000);
                     }
@@ -739,23 +803,34 @@
 
         // Reset form
         function resetForm() {
-            document.getElementById('videoLink').value = '';
-            document.getElementById('userVideo').value = '';
-            document.getElementById('userAudio').value = '';
-            document.getElementById('userVideoPreview').innerHTML = `
-                <i data-lucide="upload-cloud" class="w-12 h-12 mx-auto mb-3 text-gray-500 icon"></i>
+            const videoLink = document.getElementById('videoLink');
+            const userVideo = document.getElementById('userVideo');
+            const userAudio = document.getElementById('userAudio');
+            const userVideoPreview = document.getElementById('userVideoPreview');
+            const userAudioPreview = document.getElementById('userAudioPreview');
+            const progressSection = document.getElementById('progressSection');
+            const resultSection = document.getElementById('resultSection');
+            const generateBtn = document.getElementById('generateBtn');
+
+            if (videoLink) videoLink.value = '';
+            if (userVideo) userVideo.value = '';
+            if (userAudio) userAudio.value = '';
+            if (userVideoPreview) userVideoPreview.innerHTML = `
+                <i data-lucide="upload-cloud" class="w-10 h-10 mx-auto mb-3 text-gray-500 icon"></i>
                 <p class="text-gray-400">点击或拖拽上传视频</p>
                 <p class="text-xs text-gray-500 mt-2">支持 MP4、MOV、AVI 格式</p>
             `;
-            document.getElementById('userAudioPreview').innerHTML = `
-                <i data-lucide="music" class="w-12 h-12 mx-auto mb-3 text-gray-500 icon"></i>
+            if (userAudioPreview) userAudioPreview.innerHTML = `
+                <i data-lucide="music" class="w-10 h-10 mx-auto mb-3 text-gray-500 icon"></i>
                 <p class="text-gray-400">点击或拖拽上传音频</p>
                 <p class="text-xs text-gray-500 mt-2">建议时长 10-20 秒</p>
             `;
-            document.getElementById('progressSection').classList.add('hidden');
-            document.getElementById('resultSection').classList.add('hidden');
-            document.getElementById('generateBtn').disabled = false;
-            document.getElementById('generateBtn').innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
+            if (progressSection) progressSection.classList.add('hidden');
+            if (resultSection) resultSection.classList.add('hidden');
+            if (generateBtn) {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
+            }
             lucide.createIcons();
         }
 
