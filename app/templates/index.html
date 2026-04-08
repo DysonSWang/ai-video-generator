@@ -587,8 +587,11 @@
             const messages = document.getElementById('statusMessages');
             const steps = messages.querySelectorAll('.flex.items-center');
             steps.forEach(step => {
-                step.querySelector('i').classList.remove('text-rose-400');
-                step.querySelector('i').classList.add('text-green-400');
+                const icon = step.querySelector('svg') || step.querySelector('i');
+                if (icon) {
+                    icon.classList.remove('text-rose-400');
+                    icon.classList.add('text-green-400');
+                }
                 step.classList.remove('text-gray-400');
                 step.classList.add('text-green-400');
             });
