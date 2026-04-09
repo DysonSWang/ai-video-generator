@@ -100,7 +100,7 @@
 
         .upload-zone {
             border: 2px dashed rgba(255, 255, 255, 0.2);
-            transition: all 0.3s ease;
+            transition: border-color 0.2s ease, background-color 0.2s ease;
         }
 
         .upload-zone:hover, .upload-zone.dragover {
@@ -109,7 +109,7 @@
         }
 
         .upload-zone .icon {
-            transition: all 0.3s ease;
+            transition: opacity 0.2s ease;
         }
 
         .upload-zone:hover .icon {
@@ -159,7 +159,7 @@
             border: 1.5px solid rgba(255,255,255,0.15);
             background: rgba(255,255,255,0.05);
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
             gap: 2px;
         }
         .provider-btn:hover {
@@ -213,7 +213,7 @@
         <!-- Background Effects -->
         <div class="absolute inset-0 overflow-hidden">
             <!-- Subtle single-tone ambient glow instead of purple blobs -->
-            <div class="absolute top-1/3 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-rose-500/5 rounded-full blur-3xl"></div>
+            <div class="absolute top-1/3 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-gradient-to-br from-rose-500/10 to-transparent rounded-full"></div>
         </div>
 
         <div class="max-w-6xl mx-auto text-center relative z-10">
@@ -658,11 +658,10 @@
                 const newStep = document.createElement('div');
                 newStep.className = 'flex items-center gap-3 text-gray-400';
                 newStep.innerHTML = `
-                    <i data-lucide="loader-2" class="w-4 h-4 text-rose-400 animate-spin"></i>
+                    <svg class="w-4 h-4 text-rose-400 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                     <span>${message}</span>
                 `;
                 messages.appendChild(newStep);
-                lucide.createIcons();
             }
         }
 
@@ -746,52 +745,6 @@
                     lucide.createIcons();
                 }
                 if (progressSection) progressSection.classList.add('hidden');
-            }
-        }
-
-            // Upload files first
-            try {
-                updateProgress(5, '上传视频文件...');
-                const videoFormData = new FormData();
-                videoFormData.append('file', userVideo);
-                const videoRes = await fetch('/api/upload/video', { method: 'POST', body: videoFormData });
-                const videoData = await videoRes.json();
-                const videoId = videoData.video_id;
-
-                updateProgress(15, '上传音频文件...');
-                const audioFormData = new FormData();
-                audioFormData.append('file', userAudio);
-                const audioRes = await fetch('/api/upload/audio', { method: 'POST', body: audioFormData });
-                const audioData = await audioRes.json();
-                const audioId = audioData.audio_id;
-
-                // Start pipeline
-                updateProgress(20, '启动AI处理流程...');
-                const pipelineRes = await fetch('/api/pipeline/run', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        video_link: videoLink,
-                        user_video_id: videoId,
-                        user_audio_id: audioId,
-                        options: {
-                            rewrite_style: rewriteStyle,
-                            lip_sync_provider: lipSyncProvider,
-                            add_subtitle: addSubtitle
-                        }
-                    })
-                });
-                const pipelineData = await pipelineRes.json();
-                const taskId = pipelineData.task_id;
-
-                // Poll for progress
-                pollTaskStatus(taskId, 20);
-            } catch (error) {
-                console.error('Error:', error);
-                alert('生成失败: ' + error.message);
-                btn.disabled = false;
-                btn.innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
-                lucide.createIcons();
             }
         }
 
