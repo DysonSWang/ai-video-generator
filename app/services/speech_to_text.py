@@ -38,6 +38,12 @@ def extract_audio(video_path: str, output_path: Optional[str] = None) -> str:
     if output_path is None:
         output_path = str(Path(video_path).with_suffix('.wav'))
 
+    # 先检查是否有音轨
+    check_cmd = ['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_type', '-of', 'json', video_path]
+    result = subprocess.run(check_cmd, capture_output=True, text=True)
+    if 'audio' not in result.stdout.lower():
+        raise ValueError(f"视频不包含音轨: {Path(video_path).name}")
+
     cmd = [
         'ffmpeg', '-y', '-i', video_path,
         '-vn', '-acodec', 'pcm_s16le',

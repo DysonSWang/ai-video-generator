@@ -12,13 +12,13 @@ from .speech_to_text import transcribe, TranscriptionSegment, segments_to_srt, _
 
 @dataclass
 class SubtitleStyle:
-    font_size: int = 36               # 增大字体
+    font_size: int = 26               # 竖屏视频字幕不能太大
     font_color: str = "&HFFFFFF"      # 白色
     outline_color: str = "&H000000"   # 黑色描边
-    outline_width: int = 3             # 加粗描边
+    outline_width: int = 2             # 描边
     bold: bool = True
     position: str = "bottom"           # bottom / top / center
-    margin_v: int = 80                 # 垂直边距
+    margin_v: int = 100               # 垂直边距
 
 @dataclass
 class SubtitleResult:
@@ -106,7 +106,7 @@ def burn_subtitle(
         f"Outline={style.outline_width},"
         f"Bold={1 if style.bold else 0},"
         f"MarginV={style.margin_v},"
-        f"MarginL=40,MarginR=40"  # 左右边距，防止文字贴边
+        f"MarginL=80,MarginR=80"  # 增大左右边距，防止字幕被裁切
     )
 
     # 位置调整

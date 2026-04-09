@@ -81,6 +81,25 @@ def save_task(task_id: str, status: str, progress: int, message: str,
     conn.commit()
     conn.close()
 
+def merge_task_result(task_id: str, updates: dict):
+    """只更新 result 字段中的某些键，保留其他键不变"""
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT status, progress, message, result, task_start_time FROM tasks WHERE task_id = ?",
+        (task_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return
+    current_result = json.loads(row[3]) if row[3] else {}
+    current_result.update(updates)
+    conn.execute(
+        "INSERT OR REPLACE INTO tasks (task_id, status, progress, message, result, task_start_time) VALUES (?, ?, ?, ?, ?, ?)",
+        (task_id, row[0], row[1], row[2], json.dumps(current_result), row[4])
+    )
+    conn.commit()
+    conn.close()
+
 def get_task(task_id: str) -> Optional[dict]:
     """从数据库获取任务状态，含 elapsed_seconds"""
     conn = sqlite3.connect(DB_PATH)
@@ -181,7 +200,7 @@ def _run_sync_in_executor(loop, func, *args):
     return loop.run_in_executor(None, func, *args)
 
 def _extract_frame_from_video(video_path: str, output_path: str, timestamp: float = 1.0) -> str:
-    """从视频中提取一帧作为图片
+    """从视频中提取一帧作为图片，并在上方添加padding防止头部被裁切
 
     Args:
         video_path: 视频文件路径
@@ -193,11 +212,30 @@ def _extract_frame_from_video(video_path: str, output_path: str, timestamp: floa
     """
     import subprocess
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    # 先提取帧
+    temp_frame = output_path + '.temp.jpg'
     subprocess.run([
         'ffmpeg', '-y', '-ss', str(timestamp), '-i', video_path,
-        '-vframes', '1', '-q:v', '2', output_path
+        '-vframes', '1', '-q:v', '2', temp_frame
     ], capture_output=True)
-    print(f">> 从视频提取帧: {output_path}")
+    # 获取原图尺寸
+    size_proc = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+        '-show_entries', 'stream=width,height', '-of', 'csv=p=0', temp_frame],
+        capture_output=True, text=True)
+    if size_proc.returncode == 0:
+        w, h = map(int, size_proc.stdout.strip().split(','))
+        # 在图片上方添加 padding（原图高度的15%），让头部往下移
+        pad_top = int(h * 0.15)
+        subprocess.run([
+            'ffmpeg', '-y', '-i', temp_frame,
+            '-vf', f'pad=iw:ih+{pad_top}:0:{pad_top}:color=black@0',
+            '-q:v', '2', output_path
+        ], capture_output=True)
+        Path(temp_frame).unlink(missing_ok=True)
+        print(f">> 从视频提取帧(加padding): {output_path}")
+    else:
+        Path(temp_frame).rename(output_path)
+        print(f">> 从视频提取帧: {output_path}")
     return output_path
 
 # ============== API路由 ==============
@@ -299,14 +337,17 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
         # Step 1: 下载同行视频
         save_task(task_id, "processing", 10, "下载同行视频...", task_start_time=task_start_time)
         video_result = await download_video(video_link)
+        merge_task_result(task_id, {"original_video_path": video_result.video_path})
 
         # Step 2: Whisper识别
         save_task(task_id, "processing", 25, "识别语音文案...", task_start_time=task_start_time)
         transcription = await transcribe(video_result.video_path)
+        merge_task_result(task_id, {"original_text": transcription.text})
 
         # Step 3: 千问改写
         save_task(task_id, "processing", 40, "改写文案...", task_start_time=task_start_time)
         rewritten = await rewrite(transcription.text, options.rewrite_style if options else "口语化")
+        merge_task_result(task_id, {"rewritten_text": rewritten})
 
 
         # Step 4: 音色克隆 + TTS
@@ -386,6 +427,7 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
         # 完成
         save_task(task_id, "completed", 100, "完成!", {
             "video_path": current_video,
+            "original_video_path": video_result.video_path,
             "original_text": transcription.text,
             "rewritten_text": rewritten
         }, task_start_time=task_start_time)

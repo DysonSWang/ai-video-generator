@@ -287,7 +287,9 @@ async def generate_lip_sync_by_provider(
             "provider": "infinite_talk"
         }
     elif provider == "kling":
-        result = await generate_lip_sync(video_path, audio_path, **kwargs)
+        # 只传递 generate_lip_sync 支持的参数
+        kling_kwargs = {k: v for k, v in kwargs.items() if k in ('poll_interval', 'max_wait')}
+        result = await generate_lip_sync(video_path, audio_path, **kling_kwargs)
         # Kling返回的是URL，需要下载
         local_path = await download_result(result)
         return {

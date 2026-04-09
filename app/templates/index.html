@@ -186,6 +186,88 @@
         .provider-btn.active .provider-desc {
             color: #FECDD3;
         }
+        /* Error Modal */
+        .error-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+        .error-modal-box {
+            background: #1f1f2e;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+        }
+        .error-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .error-modal-title {
+            color: #F87171;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .error-modal-close {
+            background: none;
+            border: none;
+            color: #9CA3AF;
+            cursor: pointer;
+            font-size: 20px;
+            line-height: 1;
+            padding: 4px;
+        }
+        .error-modal-close:hover { color: #fff; }
+        .error-modal-msg {
+            color: #D1D5DB;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-all;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error-modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+        .error-modal-btn {
+            padding: 8px 20px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .error-modal-copy {
+            background: rgba(255,255,255,0.1);
+            color: #D1D5DB;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .error-modal-copy:hover { background: rgba(255,255,255,0.15); color: #fff; }
+        .error-modal-copy.copied { background: #22C55E; color: #fff; border-color: #22C55E; }
+        .error-modal-ok {
+            background: #F43F5E;
+            color: #fff;
+        }
+        .error-modal-ok:hover { background: #E11D48; }
     </style>
 </head>
 <body class="min-h-screen text-white">
@@ -571,6 +653,28 @@
                         </button>
                     </div>
                 </div>
+
+                <!-- 文案预览 -->
+                <details id="textPreviewDetails" class="glass-card rounded-xl mt-4 overflow-hidden">
+                    <summary class="p-4 cursor-pointer select-none hover:bg-white/5 flex items-center gap-2 text-gray-300">
+                        <i data-lucide="file-text" class="w-4 h-4"></i>
+                        <span>查看文案处理详情</span>
+                    </summary>
+                    <div class="px-4 pb-4 space-y-4">
+                        <div>
+                            <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">原视频</div>
+                            <div id="previewOriginalVideo" class="text-sm text-gray-400 break-all bg-black/20 rounded p-2"></div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">原始转录</div>
+                            <div id="previewOriginalText" class="text-sm text-gray-300 bg-black/20 rounded p-3 whitespace-pre-wrap leading-relaxed"></div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">AI改写</div>
+                            <div id="previewRewrittenText" class="text-sm text-gray-300 bg-black/20 rounded p-3 whitespace-pre-wrap leading-relaxed"></div>
+                        </div>
+                    </div>
+                </details>
             </div>
         </div>
     </section>
@@ -591,8 +695,10 @@
     </footer>
 
     <script>
-        // Initialize Lucide icons
-        lucide.createIcons();
+        // Initialize Lucide icons (guard against CDN not loaded)
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
 
         // Scroll to generate section
         function scrollToGenerate() {
@@ -635,7 +741,7 @@
         }
 
         // Update progress
-        function updateProgress(percent, message) {
+        function updateProgress(percent, message, completed) {
             const progressPercent = document.getElementById('progressPercent');
             const progressBar = document.getElementById('progressBar');
             const messages = document.getElementById('statusMessages');
@@ -644,23 +750,34 @@
             if (progressBar) progressBar.style.width = percent + '%';
 
             if (messages) {
+                // Mark all existing steps as completed (green check, no spin)
                 const steps = messages.querySelectorAll('.flex.items-center');
                 steps.forEach(step => {
-                    const icon = step.querySelector('svg') || step.querySelector('i');
-                    if (icon) {
-                        icon.classList.remove('text-rose-400');
-                        icon.classList.add('text-green-400');
+                    const svg = step.querySelector('svg');
+                    if (svg) {
+                        svg.classList.remove('animate-spin', 'text-rose-400');
+                        svg.classList.add('text-green-400');
+                        // Replace spinner SVG with checkmark
+                        svg.innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
                     }
                     step.classList.remove('text-gray-400');
                     step.classList.add('text-green-400');
                 });
 
+                // Add new step
                 const newStep = document.createElement('div');
-                newStep.className = 'flex items-center gap-3 text-gray-400';
-                newStep.innerHTML = `
-                    <svg class="w-4 h-4 text-rose-400 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                    <span>${message}</span>
-                `;
+                newStep.className = 'flex items-center gap-3 ' + (completed ? 'text-green-400' : 'text-gray-400');
+                if (completed) {
+                    newStep.innerHTML = `
+                        <svg class="w-4 h-4 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        <span>${message}</span>
+                    `;
+                } else {
+                    newStep.innerHTML = `
+                        <svg class="w-4 h-4 text-rose-400 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                        <span>${message}</span>
+                    `;
+                }
                 messages.appendChild(newStep);
             }
         }
@@ -675,15 +792,15 @@
             const addSubtitle = document.getElementById('addSubtitle');
 
             if (!videoLink?.value) {
-                alert('请输入同行视频链接');
+                showErrorModal('请输入同行视频链接');
                 return;
             }
             if (!userVideo?.files[0]) {
-                alert('请上传你的形象视频');
+                showErrorModal('请上传你的形象视频');
                 return;
             }
             if (!userAudio?.files[0]) {
-                alert('请上传你的声音参考');
+                showErrorModal('请上传你的声音参考');
                 return;
             }
 
@@ -693,7 +810,7 @@
             if (btn) {
                 btn.disabled = true;
                 btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>上传中...</span>';
-                lucide.createIcons();
+                if (typeof lucide !== 'undefined') lucide.createIcons();
             }
 
             // Show progress
@@ -717,6 +834,11 @@
 
                 // Start pipeline
                 updateProgress(20, '启动AI处理流程...');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>AI处理中...</span>';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
                 const pipelineRes = await fetch('/api/pipeline/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -738,7 +860,7 @@
                 pollTaskStatus(taskId, 20);
             } catch (error) {
                 console.error('Error:', error);
-                alert('生成失败: ' + error.message);
+                showErrorModal('生成失败: ' + error.message);
                 if (btn) {
                     btn.disabled = false;
                     btn.innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
@@ -765,6 +887,7 @@
                 tabCreate.classList.remove('text-gray-400');
                 tabHistory.classList.remove('text-white', 'border-rose-500');
                 tabHistory.classList.add('text-gray-400');
+                document.querySelector('.border-b.border-white\\/10')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } else {
                 createPanel.classList.add('hidden');
                 historyPanel.classList.remove('hidden');
@@ -772,6 +895,8 @@
                 tabHistory.classList.remove('text-gray-400');
                 tabCreate.classList.remove('text-white', 'border-rose-500');
                 tabCreate.classList.add('text-gray-400');
+                // 滚动到 Tab 区域
+                document.querySelector('.border-b.border-white\\/10')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 loadHistory();
             }
         }
@@ -788,8 +913,8 @@
                     return;
                 }
                 list.innerHTML = tasks.map(t => {
-                    const statusIcon = t.status === 'completed' ? 'check-circle text-green-400'
-                        : t.status === 'failed' ? 'x-circle text-red-400' : 'loader-2 text-rose-400 animate-spin';
+                    const iconName = t.status === 'completed' ? 'check-circle' : t.status === 'failed' ? 'x-circle' : 'loader-2';
+                    const iconClass = t.status === 'completed' ? 'text-green-400' : t.status === 'failed' ? 'text-red-400' : 'text-rose-400 animate-spin';
                     const statusText = t.status === 'completed' ? '已完成' : t.status === 'failed' ? '失败' : t.progress + '%';
                     const date = new Date(t.created_at).toLocaleString('zh-CN');
                     const msg = t.message || (t.status === 'completed' ? '生成完成' : '处理中');
@@ -797,7 +922,7 @@
                     return `
                         <div class="glass-card p-4 flex items-center justify-between cursor-pointer hover:bg-white/10 transition-colors" ${canClick}>
                             <div class="flex items-center gap-3">
-                                <i data-lucide="${statusIcon}" class="w-5 h-5"></i>
+                                <i data-lucide="${iconName}" class="w-5 h-5 ${iconClass}"></i>
                                 <div>
                                     <div class="text-sm font-medium">${msg}</div>
                                     <div class="text-xs text-gray-500">${date}</div>
@@ -850,6 +975,7 @@
                 try {
                     const res = await fetch(`/api/task/${taskId}`);
                     const data = await res.json();
+                    const messages = document.getElementById('statusMessages');
 
                     // 计算 elapsed
                     const elapsedMs = Date.now() - startTime;
@@ -869,22 +995,66 @@
                     }
 
                     // Update progress based on current step
-                    if (stepIndex < steps.length && data.progress >= steps[stepIndex].progress) {
-                        updateProgress(steps[stepIndex].progress, steps[stepIndex].message);
-                        stepIndex++;
+                    // 逻辑：已完成 steps 之前的步骤全部标绿打勾；当前步骤显示转圈
+                    // 每次 poll 只更新一次，不重复追加步骤
+                    let displayStepIdx = stepIndex; // 已完成的步骤数量（不打勾）
+                    while (displayStepIdx < steps.length && data.progress > steps[displayStepIdx].progress) {
+                        displayStepIdx++;
                     }
+                    // 如果当前步骤还没显示过，显示它（带转圈）
+                    if (displayStepIdx < steps.length && data.progress > steps[0].progress) {
+                        // 找到当前显示到哪一步了（在 messages 里的 .flex.items-center 数量）
+                        const existingSteps = messages.querySelectorAll('.flex.items-center').length;
+                        if (existingSteps <= displayStepIdx) {
+                            // 只追加一个新步骤（当前处理中的，不标绿）
+                            updateProgress(steps[displayStepIdx].progress, steps[displayStepIdx].message, false);
+                        }
+                    }
+                    // 把所有之前的步骤标绿打勾（不追加新步骤）
+                    {
+                        const allSteps = messages.querySelectorAll('.flex.items-center');
+                        allSteps.forEach((step, i) => {
+                            if (i < displayStepIdx) {
+                                const svg = step.querySelector('svg');
+                                if (svg && !svg.classList.contains('text-green-400')) {
+                                    svg.classList.remove('animate-spin', 'text-rose-400');
+                                    svg.classList.add('text-green-400');
+                                    svg.innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
+                                }
+                                step.classList.remove('text-gray-400');
+                                step.classList.add('text-green-400');
+                            }
+                        });
+                    }
+                    // 记录已完成数量，供下次 poll 使用
+                    stepIndex = displayStepIdx;
 
                     if (data.status === 'completed') {
-                        updateProgress(100, '完成!');
+                        updateProgress(100, '完成!', true);
                         if (etaEl) etaEl.textContent = '已完成';
                         const ps = document.getElementById('progressSection');
                         const rs = document.getElementById('resultSection');
+                        const btn = document.getElementById('generateBtn');
                         if (ps) ps.classList.add('hidden');
                         if (rs) rs.classList.remove('hidden');
+                        // 填充文案预览
+                        if (data.result) {
+                            const ov = document.getElementById('previewOriginalVideo');
+                            const ot = document.getElementById('previewOriginalText');
+                            const rt = document.getElementById('previewRewrittenText');
+                            if (ov) ov.textContent = data.result.original_video_path || '无';
+                            if (ot) ot.textContent = data.result.original_text || '无';
+                            if (rt) rt.textContent = data.result.rewritten_text || '无';
+                        }
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
+                            if (typeof lucide !== 'undefined') lucide.createIcons();
+                        }
                         window.currentTaskId = taskId;
                     } else if (data.status === 'failed') {
                         if (etaEl) etaEl.textContent = '失败';
-                        alert('生成失败: ' + data.message);
+                        showErrorModal('生成失败: ' + data.message);
                         const ps = document.getElementById('progressSection');
                         const btn = document.getElementById('generateBtn');
                         if (ps) ps.classList.add('hidden');
@@ -965,6 +1135,52 @@
                 });
             }
         });
+    // Re-initialize Lucide icons after page fully loads
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+    </script>
+    <!-- Error Modal -->
+    <div id="errorModal" class="error-modal-overlay hidden" style="display:none;">
+        <div class="error-modal-box">
+            <div class="error-modal-header">
+                <span class="error-modal-title">出错了</span>
+                <button class="error-modal-close" onclick="closeErrorModal()">&times;</button>
+            </div>
+            <div id="errorModalMsg" class="error-modal-msg"></div>
+            <div class="error-modal-actions">
+                <button class="error-modal-btn error-modal-copy" id="copyErrorBtn" onclick="copyErrorMsg()">复制</button>
+                <button class="error-modal-btn error-modal-ok" onclick="closeErrorModal()">确定</button>
+            </div>
+        </div>
+    </div>
+    <script>
+    let currentErrorMsg = '';
+    function showErrorModal(msg) {
+        currentErrorMsg = msg;
+        document.getElementById('errorModalMsg').textContent = msg;
+        document.getElementById('errorModal').style.display = 'flex';
+        document.getElementById('copyErrorBtn').textContent = '复制';
+        document.getElementById('copyErrorBtn').classList.remove('copied');
+    }
+    function closeErrorModal() {
+        document.getElementById('errorModal').style.display = 'none';
+    }
+    function copyErrorMsg() {
+        navigator.clipboard.writeText(currentErrorMsg).then(() => {
+            const btn = document.getElementById('copyErrorBtn');
+            btn.textContent = '已复制!';
+            btn.classList.add('copied');
+            setTimeout(() => {
+                btn.textContent = '复制';
+                btn.classList.remove('copied');
+            }, 2000);
+        });
+    }
+    // Close modal on overlay click
+    document.getElementById('errorModal').addEventListener('click', function(e) {
+        if (e.target === this) closeErrorModal();
+    });
     </script>
 </body>
 </html>
