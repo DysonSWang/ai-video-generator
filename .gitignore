@@ -1,0 +1,27 @@
+# 视频/音频/图片
+assets/videos/*.mp4
+assets/audios/*.mp3
+assets/audios/*.wav
+assets/audios/*.m4a
+assets/music/*.mp3
+assets/outputs/**/*.mp4
+assets/outputs/**/*.jpg
+assets/outputs/**/*.png
+
+# 数据库
+*.db
+*.sqlite
+
+# 临时文件
+*.pyc
+__pycache__/
+*.log
+/tmp/
+
+# 浏览器数据
+*.crx
+*.pem
+
+# 环境配置
+.env
+.env.local
