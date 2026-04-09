@@ -143,20 +143,49 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .status-badge {
-            animation: pulse 2s ease-in-out infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
         /* Scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+
+        /* Provider toggle buttons */
+        .provider-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 8px;
+            border-radius: 10px;
+            border: 1.5px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.05);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            gap: 2px;
+        }
+        .provider-btn:hover {
+            border-color: rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.08);
+        }
+        .provider-btn.active {
+            border-color: #E11D48;
+            background: rgba(225,29,72,0.15);
+            box-shadow: 0 0 12px rgba(225,29,72,0.25);
+        }
+        .provider-btn .provider-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #F8FAFC;
+        }
+        .provider-btn .provider-desc {
+            font-size: 10px;
+            color: #94A3B8;
+        }
+        .provider-btn.active .provider-name {
+            color: #FDA4AF;
+        }
+        .provider-btn.active .provider-desc {
+            color: #FECDD3;
+        }
     </style>
 </head>
 <body class="min-h-screen text-white">
@@ -188,11 +217,6 @@
         </div>
 
         <div class="max-w-6xl mx-auto text-center relative z-10">
-            <div class="inline-flex items-center gap-2 glass px-4 py-2 rounded-full mb-8 fade-in">
-                <span class="w-2 h-2 bg-green-400 rounded-full status-badge"></span>
-                <span class="text-sm text-gray-300">GPU 服务器已就绪</span>
-            </div>
-
             <h1 class="text-5xl md:text-7xl font-bold mb-6 fade-in" style="animation-delay: 0.1s">
                 <span class="gradient-text">AI口播视频生成</span>
             </h1>
@@ -382,12 +406,25 @@
     <!-- Generate Section -->
     <section id="generate" class="py-24 px-4">
         <div class="max-w-3xl mx-auto">
-            <div class="mb-12">
+            <div class="mb-8">
                 <h2 class="text-3xl md:text-4xl font-bold mb-2">开始创作</h2>
                 <p class="text-gray-400">填写以下信息，AI将自动为你生成原创口播视频</p>
             </div>
 
-            <div class="space-y-6">
+            <!-- Tab 切换 -->
+            <div class="flex gap-6 border-b border-white/10 pb-4 mb-6">
+                <button onclick="showTab('create')" id="tabCreate" class="text-white font-medium border-b-2 border-rose-500 pb-3 -mb-px transition-colors">新建任务</button>
+                <button onclick="showTab('history')" id="tabHistory" class="text-gray-400 hover:text-white pb-3 -mb-px transition-colors">历史记录</button>
+            </div>
+
+            <!-- 历史记录面板 -->
+            <div id="historyPanel" class="hidden mb-6">
+                <div id="historyList" class="space-y-3">
+                    <div class="text-gray-500 text-sm py-8 text-center">加载中...</div>
+                </div>
+            </div>
+
+            <div id="createPanel" class="space-y-6">
                 <!-- Step 1: Video Link -->
                 <div class="glass-card p-6">
                     <label class="block text-sm font-medium mb-3 flex items-center gap-2">
@@ -455,11 +492,18 @@
                             </select>
                         </div>
                         <div class="glass p-4 rounded-lg">
-                            <label class="block text-xs text-gray-400 mb-2">口型同步引擎</label>
-                            <select id="lipSyncProvider" class="w-full bg-transparent border-none outline-none text-white">
-                                <option value="infinite_talk" class="bg-gray-800">InfiniteTalk (推荐)</option>
-                                <option value="kling" class="bg-gray-800">可灵 Kling</option>
-                            </select>
+                            <label class="block text-xs text-gray-400 mb-3">口型同步引擎</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button type="button" id="btnInfiniteTalk" onclick="setLipSyncProvider('infinite_talk')" class="provider-btn active">
+                                    <span class="provider-name">InfiniteTalk</span>
+                                    <span class="provider-desc">自有GPU · 效果精细</span>
+                                </button>
+                                <button type="button" id="btnKling" onclick="setLipSyncProvider('kling')" class="provider-btn">
+                                    <span class="provider-name">可灵 Kling</span>
+                                    <span class="provider-desc">云端API · 稳定快速</span>
+                                </button>
+                            </div>
+                            <input type="hidden" id="lipSyncProvider" value="infinite_talk">
                         </div>
                     </div>
                     <div class="mt-4">
@@ -480,12 +524,16 @@
             <!-- Progress Section (Hidden by default) -->
             <div id="progressSection" class="hidden mt-8">
                 <div class="glass-card p-6 rounded-xl">
-                    <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center justify-between mb-4">
                         <h3 class="text-lg font-semibold flex items-center gap-2">
                             <i data-lucide="loader-2" class="w-5 h-5 text-rose-400 animate-spin"></i>
                             正在生成...
                         </h3>
-                        <span id="progressPercent" class="text-2xl font-bold text-rose-400">0%</span>
+                        <div class="flex items-center gap-4 text-sm">
+                            <span class="text-gray-500">已耗时: <span id="elapsedDisplay" class="text-gray-300">0秒</span></span>
+                            <span class="text-gray-500">剩余: <span id="etaDisplay" class="text-gray-300">计算中...</span></span>
+                            <span id="progressPercent" class="text-xl font-bold text-rose-400">0%</span>
+                        </div>
                     </div>
 
                     <!-- Progress Bar -->
@@ -549,6 +597,13 @@
         // Scroll to generate section
         function scrollToGenerate() {
             document.getElementById('generate').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Provider toggle
+        function setLipSyncProvider(provider) {
+            document.getElementById('lipSyncProvider').value = provider;
+            document.getElementById('btnInfiniteTalk').classList.toggle('active', provider === 'infinite_talk');
+            document.getElementById('btnKling').classList.toggle('active', provider === 'kling');
         }
 
         // Handle file selection
@@ -740,6 +795,87 @@
             }
         }
 
+        // Tab 切换
+        let currentTab = 'create';
+
+        function showTab(tab) {
+            currentTab = tab;
+            const createPanel = document.getElementById('createPanel');
+            const historyPanel = document.getElementById('historyPanel');
+            const tabCreate = document.getElementById('tabCreate');
+            const tabHistory = document.getElementById('tabHistory');
+
+            if (tab === 'create') {
+                createPanel.classList.remove('hidden');
+                historyPanel.classList.add('hidden');
+                tabCreate.classList.add('text-white', 'border-rose-500');
+                tabCreate.classList.remove('text-gray-400');
+                tabHistory.classList.remove('text-white', 'border-rose-500');
+                tabHistory.classList.add('text-gray-400');
+            } else {
+                createPanel.classList.add('hidden');
+                historyPanel.classList.remove('hidden');
+                tabHistory.classList.add('text-white', 'border-rose-500');
+                tabHistory.classList.remove('text-gray-400');
+                tabCreate.classList.remove('text-white', 'border-rose-500');
+                tabCreate.classList.add('text-gray-400');
+                loadHistory();
+            }
+        }
+
+        // 加载历史记录
+        async function loadHistory() {
+            const list = document.getElementById('historyList');
+            if (!list) return;
+            try {
+                const res = await fetch('/api/tasks?limit=20');
+                const tasks = await res.json();
+                if (!tasks || tasks.length === 0) {
+                    list.innerHTML = '<div class="text-gray-500 text-sm text-center py-8">暂无历史记录</div>';
+                    return;
+                }
+                list.innerHTML = tasks.map(t => {
+                    const statusIcon = t.status === 'completed' ? 'check-circle text-green-400'
+                        : t.status === 'failed' ? 'x-circle text-red-400' : 'loader-2 text-rose-400 animate-spin';
+                    const statusText = t.status === 'completed' ? '已完成' : t.status === 'failed' ? '失败' : t.progress + '%';
+                    const date = new Date(t.created_at).toLocaleString('zh-CN');
+                    const msg = t.message || (t.status === 'completed' ? '生成完成' : '处理中');
+                    const canClick = t.status === 'completed' ? `onclick="downloadFromHistory('${t.task_id}')"` : '';
+                    return `
+                        <div class="glass-card p-4 flex items-center justify-between cursor-pointer hover:bg-white/10 transition-colors" ${canClick}>
+                            <div class="flex items-center gap-3">
+                                <i data-lucide="${statusIcon}" class="w-5 h-5"></i>
+                                <div>
+                                    <div class="text-sm font-medium">${msg}</div>
+                                    <div class="text-xs text-gray-500">${date}</div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-xs ${t.status === 'completed' ? 'text-green-400' : t.status === 'failed' ? 'text-red-400' : 'text-gray-400'}">${statusText}</span>
+                                ${t.status === 'completed' ? '<i data-lucide="download" class="w-4 h-4 text-gray-400"></i>' : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                lucide.createIcons();
+            } catch (e) {
+                list.innerHTML = '<div class="text-red-400 text-sm text-center py-8">加载失败</div>';
+            }
+        }
+
+        function downloadFromHistory(taskId) {
+            window.open(`/api/result/${taskId}`, '_blank');
+        }
+
+        // 格式化时长
+        function formatDuration(sec) {
+            if (sec < 0) return '—';
+            if (sec < 60) return `${sec}秒`;
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return `${m}分${s}秒`;
+        }
+
         // Poll task status
         async function pollTaskStatus(taskId, startProgress) {
             const steps = [
@@ -752,12 +888,32 @@
                 { progress: 95, message: '合成最终视频...' }
             ];
 
+            // 各 step 预估耗时（秒），后续根据历史数据动态调整
+            const STEP_AVG_SECS = [25, 15, 20, 30, 120, 15, 20];
             let stepIndex = 0;
+            const startTime = Date.now();
 
             const poll = async () => {
                 try {
                     const res = await fetch(`/api/task/${taskId}`);
                     const data = await res.json();
+
+                    // 计算 elapsed
+                    const elapsedMs = Date.now() - startTime;
+                    const elapsedSec = Math.floor(elapsedMs / 1000);
+                    const elapsedEl = document.getElementById('elapsedDisplay');
+                    const etaEl = document.getElementById('etaDisplay');
+                    if (elapsedEl) elapsedEl.textContent = formatDuration(elapsedSec);
+
+                    // 根据当前 step 和 progress 估算剩余时间
+                    if (data.status === 'processing' && etaEl) {
+                        const currentStepIdx = steps.findIndex(s => data.progress <= s.progress);
+                        const remainingSteps = steps.slice(Math.max(0, currentStepIdx));
+                        const remainingSecs = remainingSteps.reduce((sum, s, i) => {
+                            return sum + (STEP_AVG_SECS[Math.max(0, currentStepIdx) + i] || 30);
+                        }, 0);
+                        etaEl.textContent = formatDuration(remainingSecs);
+                    }
 
                     // Update progress based on current step
                     if (stepIndex < steps.length && data.progress >= steps[stepIndex].progress) {
@@ -767,12 +923,14 @@
 
                     if (data.status === 'completed') {
                         updateProgress(100, '完成!');
+                        if (etaEl) etaEl.textContent = '已完成';
                         const ps = document.getElementById('progressSection');
                         const rs = document.getElementById('resultSection');
                         if (ps) ps.classList.add('hidden');
                         if (rs) rs.classList.remove('hidden');
                         window.currentTaskId = taskId;
                     } else if (data.status === 'failed') {
+                        if (etaEl) etaEl.textContent = '失败';
                         alert('生成失败: ' + data.message);
                         const ps = document.getElementById('progressSection');
                         const btn = document.getElementById('generateBtn');
