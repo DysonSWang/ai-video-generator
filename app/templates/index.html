@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI口播视频生成 - 数字人视频创作平台</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts (offline) -->
+    
+    
+    <link href="/static/tailwind.min.css" rel="stylesheet">
+    <script src="/static/lucide.min.js"></script>
     <style>
         :root {
             --color-primary: #E11D48;
@@ -185,6 +185,54 @@
         }
         .provider-btn.active .provider-desc {
             color: #FECDD3;
+        }
+        /* Video Preview Modal */
+        .video-preview-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .video-preview-box {
+            background: #1a1a2e;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            max-width: 600px;
+            width: 90%;
+            overflow: hidden;
+        }
+        .video-preview-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .video-preview-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: #e2e8f0;
+        }
+        .video-preview-close {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+        .video-preview-close:hover { color: #fff; }
+        .video-preview-body {
+            padding: 12px 16px;
+        }
+        .video-preview-body video {
+            width: 100%;
+            border-radius: 8px;
+            background: #000;
         }
         /* Error Modal */
         .error-modal-overlay {
@@ -496,7 +544,7 @@
             <!-- Tab 切换 -->
             <div class="flex gap-6 border-b border-white/10 pb-4 mb-6">
                 <button onclick="showTab('create')" id="tabCreate" class="text-white font-medium border-b-2 border-rose-500 pb-3 -mb-px transition-colors">新建任务</button>
-                <button onclick="showTab('history')" id="tabHistory" class="text-gray-400 hover:text-white pb-3 -mb-px transition-colors">历史记录</button>
+                <button onclick="showTab('history')" id="tabHistory" class="text-gray-400 hover:text-white border-b-2 border-gray-600 pb-3 -mb-px transition-colors">历史记录</button>
             </div>
 
             <!-- 历史记录面板 -->
@@ -529,6 +577,38 @@
                             <span>识别</span>
                         </button>
                     </div>
+
+                    <!-- 直接粘贴文案（替代视频链接） -->
+                    <div class="mt-3 flex items-center gap-2">
+                        <button type="button" onclick="toggleDirectText()" id="btnToggleDirectText"
+                            class="text-xs text-gray-500 hover:text-rose-400 transition-colors underline underline-offset-2">
+                            或直接粘贴文案
+                        </button>
+                    </div>
+
+                    <!-- 直接文案输入区（隐藏，默认不显示） -->
+                    <div id="directTextPanel" class="hidden mt-3">
+                        <textarea id="directTextInput" rows="4"
+                            class="w-full bg-black/30 border border-white/10 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-rose-500/50 resize-none"
+                            placeholder="粘贴你的口播文案，系统将自动润色并改写..."></textarea>
+                        <div class="flex gap-2 mt-2">
+                            <button type="button" onclick="polishDirectText()"
+                                class="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg text-sm transition-colors flex items-center gap-1.5">
+                                <i data-lucide="wand-2" class="w-3.5 h-3.5"></i>
+                                润色
+                            </button>
+                            <button type="button" onclick="rewriteDirectText()"
+                                class="px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 rounded-lg text-sm transition-colors flex items-center gap-1.5">
+                                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                                改写
+                            </button>
+                            <button type="button" onclick="confirmDirectText()"
+                                class="px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg text-sm transition-colors flex items-center gap-1.5">
+                                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                确认文案
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 文案确认面板 -->
@@ -551,24 +631,26 @@
                                 <i data-lucide="file-text" class="w-4 h-4 text-rose-400"></i>
                                 原始文案
                             </h4>
-                            <button id="btnRewrite" type="button" onclick="rewriteText()"
+                            <div class="flex items-center gap-2">
+                                <button id="btnRewrite" type="button" onclick="rewriteText()"
                                 class="px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 rounded-lg text-sm transition-colors flex items-center gap-1.5">
                                 <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
                                 AI改写
                             </button>
+                            </div>
                         </div>
                         <div id="originalTextPreview" class="text-gray-300 text-sm bg-black/20 rounded-lg p-3 max-h-32 overflow-y-auto whitespace-pre-wrap"></div>
                     </div>
 
-                    <!-- 改写后文案 -->
+                    <!-- 润色/改写后文案（始终显示） -->
                     <div id="rewrittenPanel" class="hidden mt-3 glass-card p-6">
                         <h4 class="font-medium mb-3 flex items-center gap-2">
-                            <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
-                            改写后文案
+                            <i data-lucide="sparkles" class="w-4 h-4 text-amber-400" id="editorIcon"></i>
+                            <span id="editorLabel">润色后文案</span>
                         </h4>
-                        <textarea id="rewrittenTextEditor" rows="4"
-                            class="w-full bg-black/30 border border-white/10 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-rose-500/50 resize-none"
-                            placeholder="改写后的文案..."></textarea>
+                        <textarea id="rewrittenTextEditor" rows="5"
+                            class="w-full bg-gray-900 border border-white/20 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-rose-500/50 resize-none"
+                            placeholder="润色后的文案，可直接编辑..."></textarea>
                         <p class="text-xs text-gray-500 mt-2">可直接编辑修改</p>
                     </div>
 
@@ -590,14 +672,14 @@
                 <div class="glass-card p-6">
                     <label class="block text-sm font-medium mb-3 flex items-center gap-2">
                         <i data-lucide="user" class="w-4 h-4 text-rose-400"></i>
-                        你的形象视频
+                        你的形象（照片或视频）
                     </label>
                     <div class="upload-zone p-6 rounded-lg text-center cursor-pointer" onclick="document.getElementById('userVideo').click()">
-                        <input type="file" id="userVideo" accept="video/*" class="hidden" onchange="handleFileSelect(this, 'userVideoPreview')">
+                        <input type="file" id="userVideo" accept="video/*,image/*" class="hidden" onchange="handleFileSelect(this, 'userVideoPreview')">
                         <div id="userVideoPreview">
                             <i data-lucide="upload-cloud" class="w-10 h-10 mx-auto mb-3 text-gray-500 icon"></i>
-                            <p class="text-gray-400">点击或拖拽上传视频</p>
-                            <p class="text-xs text-gray-500 mt-2">支持 MP4、MOV、AVI 格式</p>
+                            <p class="text-gray-400">点击或拖拽上传照片/视频</p>
+                            <p class="text-xs text-gray-500 mt-2">支持 JPG、PNG、MP4、MOV</p>
                         </div>
                     </div>
                 </div>
@@ -722,29 +804,6 @@
                             继续创作
                         </button>
                     </div>
-                </div>
-
-                <!-- 文案预览 -->
-                <details id="textPreviewDetails" class="glass-card rounded-xl mt-4 overflow-hidden">
-                    <summary class="p-4 cursor-pointer select-none hover:bg-white/5 flex items-center gap-2 text-gray-300">
-                        <i data-lucide="file-text" class="w-4 h-4"></i>
-                        <span>查看文案处理详情</span>
-                    </summary>
-                    <div class="px-4 pb-4 space-y-4">
-                        <div>
-                            <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">原视频</div>
-                            <div id="previewOriginalVideo" class="text-sm text-gray-400 break-all bg-black/20 rounded p-2"></div>
-                        </div>
-                        <div>
-                            <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">原始转录</div>
-                            <div id="previewOriginalText" class="text-sm text-gray-300 bg-black/20 rounded p-3 whitespace-pre-wrap leading-relaxed"></div>
-                        </div>
-                        <div>
-                            <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">AI改写</div>
-                            <div id="previewRewrittenText" class="text-sm text-gray-300 bg-black/20 rounded p-3 whitespace-pre-wrap leading-relaxed"></div>
-                        </div>
-                    </div>
-                </details>
             </div>
         </div>
     </section>
@@ -797,6 +856,25 @@
                         </div>
                         <p class="text-xs text-gray-500 mt-2">${(file.size / 1024 / 1024).toFixed(2)} MB</p>
                     `;
+                    // 视频上传：启用 Kling
+                    const klingBtn = document.getElementById('btnKling');
+                    if (klingBtn) {
+                        klingBtn.classList.remove('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+                        klingBtn.title = '';
+                    }
+                } else if (fileType === 'image') {
+                    const imgUrl = URL.createObjectURL(file);
+                    preview.innerHTML = `
+                        <img src="${imgUrl}" class="max-h-20 rounded-lg mx-auto object-contain" alt="预览">
+                        <p class="text-xs text-gray-500 mt-2">${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)</p>
+                    `;
+                    // 图片上传：自动切 InfiniteTalk，禁用 Kling
+                    setLipSyncProvider('infinite_talk');
+                    const klingBtn = document.getElementById('btnKling');
+                    if (klingBtn) {
+                        klingBtn.classList.add('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+                        klingBtn.title = '图片模式不支持可灵，请上传视频';
+                    }
                 } else if (fileType === 'audio') {
                     preview.innerHTML = `
                         <div class="flex items-center justify-center gap-3">
@@ -857,6 +935,89 @@
         let extractedVideoLink = null;
         let extractedData = null;
 
+        // ==================== 直接粘贴文案模式 ====================
+
+        function toggleDirectText() {
+            const panel = document.getElementById('directTextPanel');
+            const btn = document.getElementById('btnToggleDirectText');
+            const isHidden = panel.classList.contains('hidden');
+            if (isHidden) {
+                panel.classList.remove('hidden');
+                btn.textContent = '收起';
+                document.getElementById('directTextInput').focus();
+            } else {
+                panel.classList.add('hidden');
+                btn.textContent = '或直接粘贴文案';
+            }
+        }
+
+        async function polishDirectText() {
+            const text = document.getElementById('directTextInput')?.value?.trim();
+            if (!text) { showErrorModal('请先粘贴文案'); return; }
+            const btn = event?.target?.closest('button');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>润色中...'; }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            try {
+                const res = await fetch('/api/polish-text', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                if (!res.ok) throw new Error('润色失败');
+                const data = await res.json();
+                document.getElementById('directTextInput').value = data.polished_text;
+            } catch (e) {
+                showErrorModal('润色失败: ' + e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="wand-2" class="w-3.5 h-3.5"></i>润色'; }
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        }
+
+        async function rewriteDirectText() {
+            const text = document.getElementById('directTextInput')?.value?.trim();
+            if (!text) { showErrorModal('请先粘贴文案'); return; }
+            const btn = event?.target?.closest('button');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>改写中...'; }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            try {
+                const style = document.getElementById('rewriteStyle')?.value || '口语化';
+                const res = await fetch('/api/rewrite-text', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, style })
+                });
+                if (!res.ok) throw new Error('改写失败');
+                const data = await res.json();
+                document.getElementById('directTextInput').value = data.rewritten_text;
+            } catch (e) {
+                showErrorModal('改写失败: ' + e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="sparkles" class="w-3.5 h-3.5"></i>改写'; }
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        }
+
+        function confirmDirectText() {
+            const text = document.getElementById('directTextInput')?.value?.trim();
+            if (!text) { showErrorModal('文案不能为空'); return; }
+            // 保存到 sessionStorage（没有 video_link 和 extracted_data）
+            sessionStorage.removeItem('extracted_video_link');
+            sessionStorage.removeItem('extracted_data');
+            sessionStorage.setItem('confirmed_text', text);
+
+            // 隐藏直接输入面板
+            const panel = document.getElementById('directTextPanel');
+            if (panel) panel.classList.add('hidden');
+            const btn = document.getElementById('btnToggleDirectText');
+            if (btn) btn.textContent = '或直接粘贴文案（已确认）';
+            btn?.classList.add('text-green-400');
+
+            showNotification('文案已确认，可开始上传媒体生成视频');
+        }
+
+        // ==================== 视频链接识别模式 ====================
+
         async function extractVideoText() {
             const url = document.getElementById('videoLink')?.value;
             if (!url) { showErrorModal('请输入视频链接'); return; }
@@ -897,9 +1058,42 @@
                     videoContainer.classList.remove('hidden');
                 }
 
+                // 自动润色（用户无感知）
+                btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>润色中...</span>';
+                btn.classList.remove('bg-rose-500', 'hover:bg-rose-600', 'bg-rose-400');
+                btn.classList.add('bg-amber-500');
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                try {
+                    const res = await fetch('/api/polish-text', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: data.original_text })
+                    });
+                    if (!res.ok) throw new Error('润色失败');
+
+                    const polishData = await res.json();
+                    document.getElementById('rewrittenTextEditor').value = polishData.polished_text;
+                    document.getElementById('editorLabel').textContent = '润色后文案';
+                    document.getElementById('rewrittenPanel').classList.remove('hidden');
+                    document.getElementById('textConfirmActions').classList.remove('hidden');
+                } catch (e) {
+                    // 润色失败时用原始文案
+                    document.getElementById('rewrittenTextEditor').value = data.original_text;
+                    document.getElementById('editorLabel').textContent = '原始文案（润色失败）';
+                    document.getElementById('rewrittenPanel').classList.remove('hidden');
+                    document.getElementById('textConfirmActions').classList.remove('hidden');
+                }
+
                 btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i><span>已识别</span>';
-                btn.classList.remove('bg-rose-500', 'hover:bg-rose-600');
+                btn.classList.remove('bg-amber-500');
                 btn.classList.add('bg-rose-400');
+
+                const rewriteBtn = document.getElementById('btnRewrite');
+                if (rewriteBtn) {
+                    rewriteBtn.disabled = false;
+                    rewriteBtn.innerHTML = '<i data-lucide="sparkles" class="w-3.5 h-3.5"></i>AI改写';
+                }
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             } catch (e) {
                 showErrorModal('识别失败: ' + e.message);
@@ -909,12 +1103,58 @@
             }
         }
 
-        async function rewriteText() {
+        async function polishText() {
             const originalText = extractedData?.original_text;
             if (!originalText) return;
 
-            const btn = document.getElementById('btnRewrite');
+            const btn = document.getElementById('btnPolish');
+            const rewriteBtn = document.getElementById('btnRewrite');
             btn.disabled = true;
+            rewriteBtn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>润色中...</span>';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            try {
+                const res = await fetch('/api/polish-text', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: originalText })
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || '润色失败');
+                }
+                const data = await res.json();
+
+                document.getElementById('rewrittenTextEditor').value = data.polished_text;
+                document.getElementById('editorLabel').textContent = '润色后文案';
+                document.getElementById('rewrittenPanel').classList.remove('hidden');
+                document.getElementById('textConfirmActions').classList.remove('hidden');
+
+                btn.innerHTML = '<i data-lucide="wand-2" class="w-3.5 h-3.5"></i><span>已润色</span>';
+                btn.classList.remove('bg-amber-500/20', 'hover:bg-amber-500/30', 'text-amber-400');
+                btn.classList.add('bg-amber-500/40', 'text-amber-300');
+                rewriteBtn.disabled = false;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            } catch (e) {
+                showErrorModal('润色失败: ' + e.message);
+                btn.disabled = false;
+                rewriteBtn.disabled = false;
+                btn.innerHTML = '<i data-lucide="wand-2" class="w-3.5 h-3.5"></i><span>润色</span>';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        }
+
+        async function rewriteText() {
+            // 优先用润色后的文案，其次原始文案
+            const textareaText = document.getElementById('rewrittenTextEditor')?.value;
+            const inputText = textareaText || extractedData?.original_text;
+            if (!inputText) return;
+
+            const btn = document.getElementById('btnRewrite');
+            const polishBtn = document.getElementById('btnPolish');
+            btn.disabled = true;
+            polishBtn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>改写中...</span>';
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
@@ -923,7 +1163,7 @@
                 const res = await fetch('/api/rewrite-text', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: originalText, style })
+                    body: JSON.stringify({ text: inputText, style })
                 });
                 if (!res.ok) {
                     const err = await res.json();
@@ -932,6 +1172,7 @@
                 const data = await res.json();
 
                 document.getElementById('rewrittenTextEditor').value = data.rewritten_text;
+                document.getElementById('editorLabel').textContent = '改写后文案（网红视角）';
                 document.getElementById('rewrittenPanel').classList.remove('hidden');
                 document.getElementById('textConfirmActions').classList.remove('hidden');
 
@@ -940,7 +1181,8 @@
             } catch (e) {
                 showErrorModal('改写失败: ' + e.message);
                 btn.disabled = false;
-                btn.innerHTML = '<i data-lucide="sparkles" class="w-3.5 h-3.5"></i>AI改写';
+                polishBtn.disabled = false;
+                btn.innerHTML = '<i data-lucide="sparkles" class="w-3.5 h-3.5"></i>改写';
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             }
         }
@@ -955,13 +1197,6 @@
             // 隐藏文案面板
             document.getElementById('textConfirmPanel').classList.add('hidden');
 
-            // 更新链接按钮状态
-            const btn = document.getElementById('btnExtract');
-            btn.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4"></i><span>已确认</span>';
-            btn.classList.remove('bg-rose-500', 'hover:bg-rose-600', 'bg-rose-400');
-            btn.classList.add('bg-green-500');
-            btn.disabled = false;
-            if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
         function cancelTextConfirm() {
@@ -976,6 +1211,24 @@
             btn.innerHTML = '<i data-lucide="scan" class="w-4 h-4"></i><span>识别</span>';
             btn.classList.remove('bg-green-500', 'bg-rose-400');
             btn.classList.add('bg-rose-500', 'hover:bg-rose-600');
+
+            // 重置改写按钮
+            const rewriteBtn = document.getElementById('btnRewrite');
+            if (rewriteBtn) {
+                rewriteBtn.disabled = false;
+                rewriteBtn.innerHTML = '<i data-lucide="sparkles" class="w-3.5 h-3.5"></i>AI改写';
+            }
+
+            // 重置直接文案面板
+            const panel = document.getElementById('directTextPanel');
+            if (panel) panel.classList.add('hidden');
+            const dtBtn = document.getElementById('btnToggleDirectText');
+            if (dtBtn) {
+                dtBtn.textContent = '或直接粘贴文案';
+                dtBtn.classList.remove('text-green-400');
+            }
+            const dtInput = document.getElementById('directTextInput');
+            if (dtInput) dtInput.value = '';
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
@@ -1003,12 +1256,8 @@
             const lipSyncProvider = document.getElementById('lipSyncProvider');
             const addSubtitle = document.getElementById('addSubtitle');
 
-            if (!videoLink?.value) {
-                showErrorModal('请输入同行视频链接');
-                return;
-            }
             if (!userVideo?.files[0]) {
-                showErrorModal('请上传你的形象视频');
+                showErrorModal('请上传你的形象（照片或视频）');
                 return;
             }
             if (!userAudio?.files[0]) {
@@ -1016,16 +1265,17 @@
                 return;
             }
 
-            // 检查文案确认状态
+            // 检查文案确认状态（视频链接 或 直接粘贴 都可）
             const savedLink = sessionStorage.getItem('extracted_video_link');
             const confirmedText = sessionStorage.getItem('confirmed_text');
             const savedData = JSON.parse(sessionStorage.getItem('extracted_data') || 'null');
 
-            if (!confirmedText || !savedLink) {
-                showErrorModal('请先识别并确认文案');
+            if (!confirmedText) {
+                showErrorModal('请先识别视频文案或直接粘贴并确认文案');
                 return;
             }
-            if (savedLink !== videoLink.value) {
+            // 如果填了视频链接但变了，要求重新识别
+            if (videoLink?.value && savedLink && savedLink !== videoLink.value) {
                 sessionStorage.removeItem('extracted_video_link');
                 sessionStorage.removeItem('extracted_data');
                 sessionStorage.removeItem('confirmed_text');
@@ -1078,6 +1328,7 @@
                         confirmed_text: confirmedText,
                         extracted_video_path: savedData?.video_path,
                         extracted_segments: savedData?.segments,
+                        video_duration: savedData?.duration,
                         options: {
                             rewrite_style: rewriteStyle?.value || '口语化',
                             lip_sync_provider: lipSyncProvider?.value || 'infinite_talk',
@@ -1116,17 +1367,17 @@
                 createPanel.classList.remove('hidden');
                 historyPanel.classList.add('hidden');
                 tabCreate.classList.add('text-white', 'border-rose-500');
-                tabCreate.classList.remove('text-gray-400');
+                tabCreate.classList.remove('text-gray-400', 'border-gray-600');
                 tabHistory.classList.remove('text-white', 'border-rose-500');
-                tabHistory.classList.add('text-gray-400');
+                tabHistory.classList.add('text-gray-400', 'border-gray-600');
                 document.querySelector('.border-b.border-white\\/10')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } else {
                 createPanel.classList.add('hidden');
                 historyPanel.classList.remove('hidden');
                 tabHistory.classList.add('text-white', 'border-rose-500');
-                tabHistory.classList.remove('text-gray-400');
+                tabHistory.classList.remove('text-gray-400', 'border-gray-600');
                 tabCreate.classList.remove('text-white', 'border-rose-500');
-                tabCreate.classList.add('text-gray-400');
+                tabCreate.classList.add('text-gray-400', 'border-gray-600');
                 // 滚动到 Tab 区域
                 document.querySelector('.border-b.border-white\\/10')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 loadHistory();
@@ -1150,9 +1401,15 @@
                     const statusText = t.status === 'completed' ? '已完成' : t.status === 'failed' ? '失败' : t.progress + '%';
                     const date = new Date(t.created_at).toLocaleString('zh-CN');
                     const msg = t.message || (t.status === 'completed' ? '生成完成' : '处理中');
-                    const canClick = t.status === 'completed' ? `onclick="downloadFromHistory('${t.task_id}')"` : '';
+                    const videoPath = t.result?.video_path || '';
+                    const playBtn = t.status === 'completed' && videoPath
+                        ? `<button onclick="event.stopPropagation();openVideoPreview('${videoPath.replace(/'/g, "\\'")}')" class="p-1 hover:bg-white/10 rounded transition-colors cursor-pointer" title="预览"><i data-lucide="play-circle" class="w-5 h-5 text-rose-400"></i></button>`
+                        : '';
+                    const downloadBtn = t.status === 'completed'
+                        ? `<button onclick="event.stopPropagation();downloadFromHistory('${t.task_id}')" class="p-1 hover:bg-white/10 rounded transition-colors cursor-pointer" title="下载"><i data-lucide="download" class="w-4 h-4 text-gray-400"></i></button>`
+                        : '';
                     return `
-                        <div class="glass-card p-4 flex items-center justify-between cursor-pointer hover:bg-white/10 transition-colors" ${canClick}>
+                        <div class="glass-card p-4 flex items-center justify-between hover:bg-white/10 transition-colors">
                             <div class="flex items-center gap-3">
                                 <i data-lucide="${iconName}" class="w-5 h-5 ${iconClass}"></i>
                                 <div>
@@ -1162,14 +1419,15 @@
                             </div>
                             <div class="flex items-center gap-3">
                                 <span class="text-xs ${t.status === 'completed' ? 'text-green-400' : t.status === 'failed' ? 'text-red-400' : 'text-gray-400'}">${statusText}</span>
-                                ${t.status === 'completed' ? '<i data-lucide="download" class="w-4 h-4 text-gray-400"></i>' : ''}
+                                ${playBtn}
+                                ${downloadBtn}
                             </div>
                         </div>
                     `;
                 }).join('');
-                lucide.createIcons();
+                if (typeof lucide !== 'undefined') lucide.createIcons();
             } catch (e) {
-                list.innerHTML = '<div class="text-red-400 text-sm text-center py-8">加载失败</div>';
+                console.error('loadHistory error:', e); list.innerHTML = '<div class="text-red-400 text-sm text-center py-8">加载失败</div>';
             }
         }
 
@@ -1198,8 +1456,15 @@
                 { progress: 95, message: '合成最终视频...' }
             ];
 
-            // 各 step 预估耗时（秒），后续根据历史数据动态调整
-            const STEP_AVG_SECS = [25, 15, 20, 30, 120, 15, 20];
+            // 各 step 预估耗时
+            // 基于GPU服务器实测（RTX 5090，InfiniteTalk）：
+            // - 下载、转录、改写、克隆：相对稳定
+            // - 口型同步：实测 78s 视频耗时 1688s（约 22min GPU时间），即 ~17x realtime
+            //   包含模型加载、网络传输等固定成本约 45s
+            // - 字幕、合成：相对固定
+            // steps: 下载、转录、改写、克隆、口型同步、字幕、合成
+            const FIXED_SECS     = [25,  15,  20,  30,   45,   10,   10]; // 固定成本（秒）
+            const DURATION_RATIO = [0,  0.3,  0,   0,   22,  0.2,  0.2]; // 相对视频时长的系数
             let stepIndex = 0;
             const startTime = Date.now();
 
@@ -1216,14 +1481,16 @@
                     const etaEl = document.getElementById('etaDisplay');
                     if (elapsedEl) elapsedEl.textContent = formatDuration(elapsedSec);
 
-                    // 根据当前 step 和 progress 估算剩余时间
+                    // 根据当前 step 和视频时长估算剩余时间
                     if (data.status === 'processing' && etaEl) {
+                        const vd = data.video_duration || 0;
                         const currentStepIdx = steps.findIndex(s => data.progress <= s.progress);
-                        const remainingSteps = steps.slice(Math.max(0, currentStepIdx));
-                        const remainingSecs = remainingSteps.reduce((sum, s, i) => {
-                            return sum + (STEP_AVG_SECS[Math.max(0, currentStepIdx) + i] || 30);
-                        }, 0);
-                        etaEl.textContent = formatDuration(remainingSecs);
+                        let remainingSecs = 0;
+                        for (let i = Math.max(0, currentStepIdx); i < steps.length; i++) {
+                            remainingSecs += FIXED_SECS[i] || 0;
+                            remainingSecs += vd * (DURATION_RATIO[i] || 0);
+                        }
+                        etaEl.textContent = formatDuration(Math.round(remainingSecs));
                     }
 
                     // Update progress based on current step
@@ -1269,15 +1536,8 @@
                         const btn = document.getElementById('generateBtn');
                         if (ps) ps.classList.add('hidden');
                         if (rs) rs.classList.remove('hidden');
-                        // 填充文案预览
+                        // 填充视频预览
                         if (data.result) {
-                            const ov = document.getElementById('previewOriginalVideo');
-                            const ot = document.getElementById('previewOriginalText');
-                            const rt = document.getElementById('previewRewrittenText');
-                            if (ov) ov.textContent = data.result.original_video_path || '无';
-                            if (ot) ot.textContent = data.result.original_text || '无';
-                            if (rt) rt.textContent = data.result.rewritten_text || '无';
-                            // 设置最终视频预览
                             const fvp = document.getElementById('finalVideoPlayer');
                             if (fvp && data.result.video_path) {
                                 // /home/admin/ai-video-generator/assets/... -> /assets/...
@@ -1346,9 +1606,15 @@
             if (userAudio) userAudio.value = '';
             if (userVideoPreview) userVideoPreview.innerHTML = `
                 <i data-lucide="upload-cloud" class="w-10 h-10 mx-auto mb-3 text-gray-500 icon"></i>
-                <p class="text-gray-400">点击或拖拽上传视频</p>
-                <p class="text-xs text-gray-500 mt-2">支持 MP4、MOV、AVI 格式</p>
+                <p class="text-gray-400">点击或拖拽上传照片/视频</p>
+                <p class="text-xs text-gray-500 mt-2">支持 JPG、PNG、MP4、MOV</p>
             `;
+            // 恢复 Kling 按钮状态
+            const klingBtn = document.getElementById('btnKling');
+            if (klingBtn) {
+                klingBtn.classList.remove('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+                klingBtn.title = '';
+            }
             if (userAudioPreview) userAudioPreview.innerHTML = `
                 <i data-lucide="music" class="w-10 h-10 mx-auto mb-3 text-gray-500 icon"></i>
                 <p class="text-gray-400">点击或拖拽上传音频</p>
@@ -1409,6 +1675,18 @@
             </div>
         </div>
     </div>
+    <!-- Video Preview Modal -->
+    <div id="videoPreviewModal" class="video-preview-overlay hidden" style="display:none;">
+        <div class="video-preview-box">
+            <div class="video-preview-header">
+                <span class="video-preview-title">视频预览</span>
+                <button class="video-preview-close" onclick="closeVideoPreview()">&times;</button>
+            </div>
+            <div class="video-preview-body">
+                <video id="videoPreviewPlayer" controls playsinline></video>
+            </div>
+        </div>
+    </div>
     <script>
     let currentErrorMsg = '';
     function showErrorModal(msg) {
@@ -1435,6 +1713,26 @@
     // Close modal on overlay click
     document.getElementById('errorModal').addEventListener('click', function(e) {
         if (e.target === this) closeErrorModal();
+    });
+
+    // Video Preview Modal
+    function openVideoPreview(videoPath) {
+        const modal = document.getElementById('videoPreviewModal');
+        const player = document.getElementById('videoPreviewPlayer');
+        if (!modal || !player) return;
+        // Convert file path to HTTP URL
+        const httpUrl = videoPath.replace('/home/admin/ai-video-generator', '');
+        player.src = httpUrl;
+        modal.style.display = 'flex';
+    }
+    function closeVideoPreview() {
+        const modal = document.getElementById('videoPreviewModal');
+        const player = document.getElementById('videoPreviewPlayer');
+        if (modal) modal.style.display = 'none';
+        if (player) { player.pause(); player.src = ''; }
+    }
+    document.getElementById('videoPreviewModal').addEventListener('click', function(e) {
+        if (e.target === this) closeVideoPreview();
     });
     </script>
 </body>

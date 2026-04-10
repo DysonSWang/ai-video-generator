@@ -23,10 +23,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.services.video_downloader import download_video, VideoResult
 from app.services.speech_to_text import transcribe, TranscriptionSegment
-from app.services.text_rewrite import rewrite
+from app.services.text_rewrite import rewrite, polish
 from app.services.voice_clone import clone_and_synthesize
 from app.services.lip_sync import generate_lip_sync_by_provider
-from app.services.subtitle import generate_srt_async, generate_srt_from_rewritten, burn_subtitle, SubtitleStyle
+from app.services.subtitle import generate_srt_async, generate_srt_from_rewritten, generate_ass_from_rewritten, burn_subtitle, SubtitleStyle
 from app.services.music import add_music, MusicOptions
 from app.services.pip import add_pip
 from app.config import CDP_PORT
@@ -58,7 +58,8 @@ def init_db():
             message TEXT,
             result TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            task_start_time REAL
+            task_start_time REAL,
+            pipeline_step INTEGER DEFAULT 0
         )
     """)
     # 兼容已有数据：若无 task_start_time 列则添加
@@ -66,17 +67,27 @@ def init_db():
         conn.execute("ALTER TABLE tasks ADD COLUMN task_start_time REAL")
     except sqlite3.OperationalError:
         pass  # 列已存在
+    # 兼容已有数据：若无 pipeline_step 列则添加
+    try:
+        conn.execute("ALTER TABLE tasks ADD COLUMN pipeline_step INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # 列已存在
     conn.commit()
     conn.close()
 
 def save_task(task_id: str, status: str, progress: int, message: str,
-              result: Optional[dict] = None, task_start_time: Optional[float] = None):
+              result: Optional[dict] = None, task_start_time: Optional[float] = None,
+              pipeline_step: Optional[int] = None):
     """保存任务状态到数据库"""
     conn = sqlite3.connect(DB_PATH)
     result_json = json.dumps(result) if result else None
+    if pipeline_step is None:
+        # 保留现有值
+        row = conn.execute("SELECT pipeline_step FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+        pipeline_step = row[0] if row else 0
     conn.execute(
-        "INSERT OR REPLACE INTO tasks (task_id, status, progress, message, result, task_start_time) VALUES (?, ?, ?, ?, ?, ?)",
-        (task_id, status, progress, message, result_json, task_start_time)
+        "INSERT OR REPLACE INTO tasks (task_id, status, progress, message, result, task_start_time, pipeline_step) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (task_id, status, progress, message, result_json, task_start_time, pipeline_step)
     )
     conn.commit()
     conn.close()
@@ -85,7 +96,7 @@ def merge_task_result(task_id: str, updates: dict):
     """只更新 result 字段中的某些键，保留其他键不变"""
     conn = sqlite3.connect(DB_PATH)
     row = conn.execute(
-        "SELECT status, progress, message, result, task_start_time FROM tasks WHERE task_id = ?",
+        "SELECT status, progress, message, result, task_start_time, pipeline_step FROM tasks WHERE task_id = ?",
         (task_id,)
     ).fetchone()
     if not row:
@@ -93,18 +104,19 @@ def merge_task_result(task_id: str, updates: dict):
         return
     current_result = json.loads(row[3]) if row[3] else {}
     current_result.update(updates)
+    pipeline_step = updates.get("pipeline_step", row[5] if len(row) > 5 else 0)
     conn.execute(
-        "INSERT OR REPLACE INTO tasks (task_id, status, progress, message, result, task_start_time) VALUES (?, ?, ?, ?, ?, ?)",
-        (task_id, row[0], row[1], row[2], json.dumps(current_result), row[4])
+        "INSERT OR REPLACE INTO tasks (task_id, status, progress, message, result, task_start_time, pipeline_step) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (task_id, row[0], row[1], row[2], json.dumps(current_result), row[4], pipeline_step)
     )
     conn.commit()
     conn.close()
 
 def get_task(task_id: str) -> Optional[dict]:
-    """从数据库获取任务状态，含 elapsed_seconds"""
+    """从数据库获取任务状态，含 elapsed_seconds 和 pipeline_step"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.execute(
-        "SELECT task_id, status, progress, message, result, created_at, task_start_time FROM tasks WHERE task_id = ?",
+        "SELECT task_id, status, progress, message, result, created_at, task_start_time, pipeline_step FROM tasks WHERE task_id = ?",
         (task_id,)
     )
     row = cursor.fetchone()
@@ -121,7 +133,9 @@ def get_task(task_id: str) -> Optional[dict]:
             "result": json.loads(row[4]) if row[4] else None,
             "created_at": row[5],
             "task_start_time": row[6],
-            "elapsed_seconds": elapsed
+            "elapsed_seconds": elapsed,
+            "video_duration": json.loads(row[4]).get("video_duration") if row[4] else None,
+            "pipeline_step": row[7] if len(row) > 7 else 0
         }
     return None
 
@@ -153,6 +167,9 @@ class RewriteTextRequest(BaseModel):
     text: str
     style: str = "口语化"
 
+class PolishTextRequest(BaseModel):
+    text: str
+
 class PipelineRequest(BaseModel):
     video_link: str
     user_video_id: str
@@ -161,6 +178,7 @@ class PipelineRequest(BaseModel):
     confirmed_text: Optional[str] = None
     extracted_video_path: Optional[str] = None
     extracted_segments: Optional[list] = None  # 原始视频的Whisper段落（用于字幕时间戳）
+    video_duration: Optional[float] = None  # 视频时长（秒），用于ETA估算
 
 class TaskStatus(BaseModel):
     task_id: str
@@ -168,6 +186,7 @@ class TaskStatus(BaseModel):
     progress: int
     message: str
     result_url: Optional[str] = None
+    video_duration: Optional[float] = None
 
 # ============== FastAPI 应用 ==============
 app = FastAPI(
@@ -176,8 +195,46 @@ app = FastAPI(
     version="1.0.0"
 )
 
+@app.on_event("startup")
+async def startup_recover_tasks():
+    """启动时检测被中断的 processing 任务，标记为 failed（避免卡死）"""
+    import time as time_module
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT task_id, message, result, task_start_time FROM tasks WHERE status = 'processing'"
+    ).fetchall()
+    conn.close()
+    if not rows:
+        return
+    now = time_module.time()
+    for row in rows:
+        task_id, message, result_json, task_start = row
+        elapsed = now - (task_start or now)
+        last_step = 0
+        video_path = None
+        if result_json:
+            try:
+                r = json.loads(result_json)
+                last_step = r.get("pipeline_step", 0)
+                video_path = r.get("lip_sync_video_path") or r.get("subtitle_srt_path")
+            except Exception:
+                pass
+        # 如果任务运行超过30分钟还没完成，视为被中断
+        if elapsed > 1800:
+            conn2 = sqlite3.connect(DB_PATH)
+            conn2.execute(
+                "UPDATE tasks SET status = 'failed', message = ? WHERE task_id = ?",
+                (f"中断恢复（step {last_step}），上次运行 {int(elapsed//60)} 分钟前，请重新开始", task_id)
+            )
+            conn2.commit()
+            conn2.close()
+            print(f"[恢复] 任务 {task_id} 被中断（step={last_step}），已标记为失败")
+
 # 挂载静态文件（用于视频预览）
 app.mount("/assets", StaticFiles(directory=str(UPLOAD_DIR)), name="assets")
+# 挂载静态文件（用于CSS和JS本地化）
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ============== 辅助函数 ==============
 
@@ -333,6 +390,15 @@ async def extract_only(request: ExtractOnlyRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/polish-text")
+async def polish_text(request: PolishTextRequest):
+    """AI润色转录稿：修正识别错误、补全缺失"""
+    try:
+        polished = await polish(request.text)
+        return {"polished_text": polished}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/rewrite-text")
 async def rewrite_text(request: RewriteTextRequest):
     """AI改写文案"""
@@ -360,7 +426,8 @@ async def run_pipeline(request: PipelineRequest, background_tasks: BackgroundTas
         request.options,
         request.confirmed_text,
         request.extracted_video_path,
-        request.extracted_segments
+        request.extracted_segments,
+        request.video_duration
     )
 
     return {"task_id": task_id}
@@ -369,7 +436,8 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
                           user_audio_id: str, options: Optional[PipelineOptions],
                           confirmed_text: Optional[str] = None,
                           extracted_video_path: Optional[str] = None,
-                          extracted_segments: Optional[list] = None):
+                          extracted_segments: Optional[list] = None,
+                          video_duration: Optional[float] = None):
     """执行Pipeline
 
     Args:
@@ -384,7 +452,7 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
         save_task(task_id, "processing", 5, "准备中...", task_start_time=task_start_time)
 
         # 解析文件路径 (根据file_id查找实际文件)
-        user_video = _resolve_file_path(UPLOAD_DIR / "videos", user_video_id, ['.mp4', '.mov', '.avi', '.mkv'])
+        user_video = _resolve_file_path(UPLOAD_DIR / "videos", user_video_id, ['.mp4', '.mov', '.avi', '.mkv', '.jpg', '.jpeg', '.png', '.webp', '.gif'])
         user_audio = _resolve_file_path(UPLOAD_DIR / "audios", user_audio_id, ['.wav', '.mp3', '.m4a', '.aac'])
 
         if not user_video:
@@ -392,8 +460,9 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
         if not user_audio:
             raise FileNotFoundError(f"用户音频不存在: {user_audio_id}")
 
-        # Step 1: 下载同行视频（若有已确认文案则复用已下载的视频）
+        # Step 1: 下载同行视频（若有已确认文案则复用已下载的视频；无视频时跳过）
         if confirmed_text and extracted_video_path:
+            # 复用已下载视频（识别流程过来的）
             save_task(task_id, "processing", 10, "复用已确认视频...", task_start_time=task_start_time)
             video_result = VideoResult(
                 video_path=extracted_video_path,
@@ -405,28 +474,57 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
                 TranscriptionSegment(**seg) if isinstance(seg, dict) else seg
                 for seg in (extracted_segments or [])
             ]  # 用于字幕时间戳
-            merge_task_result(task_id, {"original_video_path": extracted_video_path})
+            merge_task_result(task_id, {
+                "original_video_path": extracted_video_path,
+                "video_duration": video_duration or 0,
+                "pipeline_step": 1
+            })
+        elif confirmed_text and (not video_link or not video_link.strip()):
+            # 直接粘贴文案模式：没有视频，跳过下载/转录/改写
+            save_task(task_id, "processing", 10, "准备生成...", task_start_time=task_start_time)
+            video_result = VideoResult(video_path="", duration=0, desc="")
+            original_text = confirmed_text
+            rewritten = confirmed_text
+            original_segments = []
+            merge_task_result(task_id, {
+                "original_video_path": "",
+                "video_duration": 0,
+                "pipeline_step": 1
+            })
         else:
+            # 正常流程：下载 → 转录 → 改写
             save_task(task_id, "processing", 10, "下载同行视频...", task_start_time=task_start_time)
             video_result = await download_video(video_link)
-            merge_task_result(task_id, {"original_video_path": video_result.video_path})
+            merge_task_result(task_id, {
+                "original_video_path": video_result.video_path,
+                "video_duration": getattr(video_result, 'duration', 0),
+                "pipeline_step": 1
+            })
 
             # Step 2: Whisper识别
             save_task(task_id, "processing", 25, "识别语音文案...", task_start_time=task_start_time)
             transcription = await transcribe(video_result.video_path)
             original_segments = transcription.segments
-            merge_task_result(task_id, {"original_text": transcription.text})
+            merge_task_result(task_id, {
+                "original_text": transcription.text,
+                "video_duration": getattr(video_result, 'duration', 0),
+                "pipeline_step": 2
+            })
 
             # Step 3: 千问改写
             save_task(task_id, "processing", 40, "改写文案...", task_start_time=task_start_time)
             original_text = transcription.text
             rewritten = await rewrite(original_text, options.rewrite_style if options else "口语化")
-            merge_task_result(task_id, {"rewritten_text": rewritten})
+            merge_task_result(task_id, {"rewritten_text": rewritten, "pipeline_step": 3})
 
 
         # Step 4: 音色克隆 + TTS
         save_task(task_id, "processing", 55, "克隆声音并配音...", task_start_time=task_start_time)
         tts_result = await clone_and_synthesize(user_audio, rewritten)
+        merge_task_result(task_id, {
+            "tts_audio_path": tts_result.audio_path,
+            "pipeline_step": 4
+        })
 
         # Step 5: 口型同步
         save_task(task_id, "processing", 70, "生成口型同步视频...", task_start_time=task_start_time)
@@ -435,14 +533,24 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
 
         from app.services.lip_sync import generate_lip_sync_by_provider
 
-        # InfiniteTalk需要从视频提取帧作为图片
+        # 判断上传的是图片还是视频
+        VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
+        user_ext = Path(user_video).suffix.lower()
+        is_image = user_ext not in VIDEO_EXTS
+
+        # InfiniteTalk：图片直接用，视频提取帧
         if provider == "infinite_talk":
             person_image_path = str(TASKS_DIR / f"{task_id}_person.jpg")
-            _extract_frame_from_video(user_video, person_image_path)
+            if is_image:
+                import shutil
+                shutil.copy2(user_video, person_image_path)
+                print(f">>> 使用上传图片作为形象: {person_image_path}")
+            else:
+                _extract_frame_from_video(user_video, person_image_path)
 
-            # 视频数字人模式需要传入ref_video
+            # 视频数字人模式需要传入ref_video（且用户上传的必须是视频）
             ref_video = None
-            if lip_sync_mode == "视频数字人":
+            if lip_sync_mode == "视频数字人" and not is_image:
                 ref_video = user_video
 
             lip_sync_result = await generate_lip_sync_by_provider(
@@ -454,24 +562,48 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
                 task_id=task_id
             )
         else:
-            # Kling直接使用视频
+            # Kling只支持视频，不支持图片
+            if is_image:
+                raise ValueError("可灵（Kling）不支持图片模式，请上传视频或切换到 InfiniteTalk 图片数字人模式")
             lip_sync_result = await generate_lip_sync_by_provider(
                 user_video, tts_result.audio_path, provider=provider,
                 output_path=str(TASKS_DIR / f"{task_id}_lipsync.mp4"),
                 task_id=task_id
             )
         current_video = lip_sync_result["video_path"]
+        merge_task_result(task_id, {
+            "lip_sync_video_path": current_video,
+            "pipeline_step": 5
+        })
 
         # Step 6: 字幕
         if options and options.add_subtitle:
             save_task(task_id, "processing", 85, "添加字幕...", task_start_time=task_start_time)
-            # 用改写文案 + 原始时间戳生成字幕（避免重新转录 TTS 音频造成的误差）
-            subtitle_path = str(TASKS_DIR / f"{task_id}_subtitle.srt")
-            generate_srt_from_rewritten(rewritten, original_segments, subtitle_path)
+            # 用改写文案 + 原始时间戳生成ASS字幕（支持自动换行和边界控制）
+            subtitle_path = str(TASKS_DIR / f"{task_id}_subtitle.ass")
+            subtitle_style = SubtitleStyle(
+                font_size=72,
+                font_color="&HFFFFFF",
+                outline_color="&H000000",
+                outline_width=4,
+                bold=True,
+                position="bottom",
+                margin_v=100
+            )
+            generate_ass_from_rewritten(rewritten, original_segments, subtitle_path,
+                                        audio_duration=tts_result.duration, style=subtitle_style)
+            # 用唯一文件名避免浏览器缓存
+            import uuid
+            final_video_name = f"{task_id}_{uuid.uuid4().hex[:8]}_subtitled.mp4"
             current_video = await loop.run_in_executor(
                 None, burn_subtitle, current_video, subtitle_path,
-                str(TASKS_DIR / f"{task_id}_subtitled.mp4"), None
+                str(TASKS_DIR / final_video_name), subtitle_style,
+                tts_result.audio_path
             )
+            merge_task_result(task_id, {
+                "subtitle_srt_path": subtitle_path,
+                "pipeline_step": 6
+            })
 
         # Step 7: 配乐
         if options and (options.music_path or options.music_bgm_id):
@@ -489,6 +621,7 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
                     None, add_music, current_video, music_file,
                     str(TASKS_DIR / f"{task_id}_music.mp4"), music_opts
                 )
+                merge_task_result(task_id, {"pipeline_step": 7})
 
         # Step 8: 画中画
         if options and options.pip_video:
@@ -497,16 +630,21 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
                 None, add_pip, current_video, options.pip_video, options.pip_position,
                 str(TASKS_DIR / f"{task_id}_pip.mp4")
             )
+            merge_task_result(task_id, {"pipeline_step": 8})
 
         # 完成
         save_task(task_id, "completed", 100, "完成!", {
             "video_path": current_video,
             "original_video_path": video_result.video_path,
             "original_text": original_text,
-            "rewritten_text": rewritten
+            "rewritten_text": rewritten,
+            "video_duration": video_duration,
+            "pipeline_step": 9
         }, task_start_time=task_start_time)
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         save_task(task_id, "failed", 0, f"失败: {str(e)}", task_start_time=task_start_time)
 
 @app.get("/api/tasks")
@@ -514,7 +652,7 @@ async def list_tasks(limit: int = 20, offset: int = 0):
     """获取任务历史列表"""
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute(
-        """SELECT task_id, status, progress, message, result, created_at, task_start_time
+        """SELECT task_id, status, progress, message, result, created_at, task_start_time, pipeline_step
            FROM tasks ORDER BY created_at DESC LIMIT ? OFFSET ?""",
         (limit, offset)
     ).fetchall()
@@ -528,6 +666,7 @@ async def list_tasks(limit: int = 20, offset: int = 0):
             "result": json.loads(r[4]) if r[4] else None,
             "created_at": r[5],
             "task_start_time": r[6],
+            "pipeline_step": r[7] if len(r) > 7 else 0,
         }
         for r in rows
     ]

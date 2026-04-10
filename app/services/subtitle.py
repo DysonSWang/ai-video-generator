@@ -79,15 +79,17 @@ def burn_subtitle(
     video_path: str,
     subtitle_path: str,
     output_path: Optional[str] = None,
-    style: Optional[SubtitleStyle] = None
+    style: Optional[SubtitleStyle] = None,
+    audio_path: Optional[str] = None
 ) -> str:
     """将字幕烧录到视频
 
     Args:
         video_path: 源视频路径
-        subtitle_path: SRT字幕文件路径
+        subtitle_path: SRT/ASS字幕文件路径
         output_path: 输出视频路径
         style: 字幕样式
+        audio_path: 可选音频路径（当视频无音轨时使用，如TTS音频）
 
     Returns:
         烧录后的视频路径
@@ -117,27 +119,87 @@ def burn_subtitle(
     elif style.position == "center":
         force_style += ",Alignment=Center"
 
-    cmd = [
-        'ffmpeg', '-y', '-i', video_path,
-        '-vf', f'subtitles={subtitle_path}:force_style=\'{force_style}\'',
-        '-c:a', 'copy',
-        output_path
-    ]
+    # 检查视频是否有音轨
+    has_audio = False
+    try:
+        probe = subprocess.run(
+            ['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type',
+             '-of', 'csv=p=0', video_path],
+            capture_output=True, text=True
+        )
+        has_audio = 'audio' in probe.stdout
+    except Exception:
+        pass
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        # 尝试简单方式
+    if has_audio:
+        # 视频有音轨：重新编码视频（字幕滤镜需要），保留音频
         cmd = [
             'ffmpeg', '-y', '-i', video_path,
-            '-vf', f'subtitles={subtitle_path}',
-            '-c:a', 'copy',
+            '-vf', f'subtitles={subtitle_path}:force_style=\'{force_style}\'',
+            '-c:v', 'libx264', '-preset', 'fast',
+            '-c:a', 'aac',
             output_path
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
-
         if result.returncode != 0:
-            raise RuntimeError(f"字幕烧录失败: {result.stderr}")
+            cmd = [
+                'ffmpeg', '-y', '-i', video_path,
+                '-vf', f'subtitles={subtitle_path}',
+                '-c:v', 'libx264', '-preset', 'fast',
+                '-c:a', 'aac',
+                output_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+    elif audio_path and Path(audio_path).exists():
+        # 视频无音轨但提供了音频：合并音频 + 烧录字幕
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', video_path,
+            '-i', audio_path,
+            '-vf', f'subtitles={subtitle_path}:force_style=\'{force_style}\'',
+            '-map', '0:v',
+            '-map', '1:a',
+            '-c:v', 'libx264', '-preset', 'fast',
+            '-shortest',
+            output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            # 尝试不用force_style
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', video_path,
+                '-i', audio_path,
+                '-vf', f'subtitles={subtitle_path}',
+                '-map', '0:v',
+                '-map', '1:a',
+                '-c:v', 'libx264', '-preset', 'fast',
+                '-shortest',
+                output_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+    else:
+        # 无音轨且无音频：直接烧录（无音频）
+        cmd = [
+            'ffmpeg', '-y', '-i', video_path,
+            '-vf', f'subtitles={subtitle_path}:force_style=\'{force_style}\'',
+            '-c:v', 'libx264', '-preset', 'fast',
+            '-shortest',
+            output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            cmd = [
+                'ffmpeg', '-y', '-i', video_path,
+                '-vf', f'subtitles={subtitle_path}',
+                '-c:v', 'libx264', '-preset', 'fast',
+                '-shortest',
+                output_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        raise RuntimeError(f"字幕烧录失败: {result.stderr}")
 
     print(f">>> 字幕烧录完成: {output_path}")
     return output_path
@@ -276,3 +338,115 @@ if __name__ == "__main__":
     print(f"\n>>> 完成!")
     print(f">>> 字幕: {result.srt_path}")
     print(f">>> 视频: {result.video_path}")
+
+
+def _format_ass_time(seconds: float) -> str:
+    """ASS时间格式: H:MM:SS.cc (厘秒)"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = seconds % 60
+    return f"{hours}:{minutes:02d}:{secs:05.2f}"
+
+
+def generate_ass_from_rewritten(
+    rewritten_text: str,
+    original_segments: list,
+    output_path: str,
+    audio_duration: Optional[float] = None,
+    style: Optional[SubtitleStyle] = None,
+) -> str:
+    """用改写文案生成ASS字幕（支持自动换行和边界控制）
+
+    Args:
+        rewritten_text: 改写后的完整文案
+        original_segments: 原始视频的 Whisper 转录段落（含时间戳，用于取总时长）
+        output_path: ASS 文件输出路径
+        audio_duration: 音频总时长（秒）
+        style: 字幕样式
+
+    Returns:
+        ASS文件路径
+    """
+    import re
+
+    if style is None:
+        style = SubtitleStyle()
+
+    # 按句子拆分（和SRT版本一样）
+    paragraphs = rewritten_text.split('\n')
+    sentences = []
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+        parts = re.split(r'([。！？])', para)
+        for i in range(0, len(parts) - 1, 2):
+            s = parts[i].strip()
+            p = parts[i + 1] if i + 1 < len(parts) else ''
+            if s:
+                sentences.append(s + p)
+        if len(parts) % 2 == 1 and parts[-1].strip():
+            sentences.append(parts[-1].strip())
+
+    sentences = [s.strip() for s in sentences if s.strip()]
+    if not sentences:
+        return ""
+
+    # 计算总时长
+    if audio_duration is not None:
+        total_duration = audio_duration
+    elif original_segments:
+        total_duration = original_segments[-1].end if original_segments else 0.0
+    else:
+        total_duration = 0.0
+
+    # ASS头和样式
+    # WrapStyle=0: 智能换行（按空格处换行，中文按句末标点）
+    ass_header = f"""[Script Info]
+Title=AI Video Subtitles
+ScriptType=v4.00+
+PlayResX: 720
+PlayResY: 1280
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,SimHei,{style.font_size},&H00{style.font_color[2:]},&H000000FF,&H00{style.outline_color[2:]},&H00000000,{1 if style.bold else 0},0,0,0,100,100,0,0,1,{style.outline_width},{style.outline_width},2,{style.margin_v},{style.margin_v},{style.margin_v},134
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+    # Alignment=2 means bottom-center in ASS
+    # MarginL/MarginR 水平边距，MarginV 垂直边距
+    dialogue_lines = []
+    num_sentences = len(sentences)
+
+    for i, text in enumerate(sentences):
+        start_sec = (i / num_sentences) * total_duration
+        end_sec = ((i + 1) / num_sentences) * total_duration
+
+        # 如果句子太长（> 15秒），拆分
+        if end_sec - start_sec > 15 and i < num_sentences - 1:
+            mid_sec = (start_sec + end_sec) / 2
+            text1 = text[:len(text)//2]
+            text2 = text[len(text)//2:]
+            dialogue_lines.append(
+                f"Dialogue: 0,{_format_ass_time(start_sec)},{_format_ass_time(mid_sec)},Default,,0,0,0,,{text1}"
+            )
+            dialogue_lines.append(
+                f"Dialogue: 0,{_format_ass_time(mid_sec)},{_format_ass_time(end_sec)},Default,,0,0,0,,{text2}"
+            )
+        else:
+            dialogue_lines.append(
+                f"Dialogue: 0,{_format_ass_time(start_sec)},{_format_ass_time(end_sec)},Default,,0,0,0,,{text}"
+            )
+
+    content = ass_header + '\n'.join(dialogue_lines) + '\n'
+
+    if output_path:
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        print(f">>> ASS字幕生成（改写文案）: {output_path} ({num_sentences} 句)")
+
+    return content

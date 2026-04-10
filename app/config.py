@@ -8,7 +8,7 @@ import os
 # 阿里云百炼 (千问)
 QWEN_API_KEY = os.getenv("QWEN_API_KEY", "sk-d4d0824db5e847de8ddbef4cda0b4e34")
 QWEN_API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-QWEN_MODEL = "qwen-plus"
+QWEN_MODEL = "qwen-turbo"
 
 # 硅基流动 (TTS + 音色克隆)
 SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY", "sk-cnfczetwmgwynbwezbadzhvceilpivocpaltgwtodnukpwpd")
