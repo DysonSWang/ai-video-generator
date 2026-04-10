@@ -21,7 +21,7 @@ from pydantic import BaseModel
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.services.video_downloader import download_video
+from app.services.video_downloader import download_video, VideoResult
 from app.services.speech_to_text import transcribe
 from app.services.text_rewrite import rewrite
 from app.services.voice_clone import clone_and_synthesize
@@ -146,11 +146,21 @@ class PipelineOptions:
 class VideoLinkRequest(BaseModel):
     url: str
 
+class ExtractOnlyRequest(BaseModel):
+    url: str
+
+class RewriteTextRequest(BaseModel):
+    text: str
+    style: str = "口语化"
+
 class PipelineRequest(BaseModel):
     video_link: str
     user_video_id: str
     user_audio_id: str
     options: Optional[PipelineOptions] = None
+    confirmed_text: Optional[str] = None
+    extracted_video_path: Optional[str] = None
+    extracted_segments: Optional[list] = None  # 原始视频的Whisper段落（用于字幕时间戳）
 
 class TaskStatus(BaseModel):
     task_id: str
@@ -296,6 +306,33 @@ async def extract_from_link(request: VideoLinkRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/extract-only")
+async def extract_only(request: ExtractOnlyRequest):
+    """下载抖音视频并转录，返回原始文案（不启动pipeline）"""
+    try:
+        video_result = await download_video(request.url)
+        transcription = await transcribe(video_result.video_path)
+        return {
+            "video_path": video_result.video_path,
+            "duration": video_result.duration,
+            "original_text": transcription.text,
+            "segments": [
+                {"start": s.start, "end": s.end, "text": s.text}
+                for s in transcription.segments
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/rewrite-text")
+async def rewrite_text(request: RewriteTextRequest):
+    """AI改写文案"""
+    try:
+        rewritten = await rewrite(request.text, request.style)
+        return {"rewritten_text": rewritten}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/pipeline/run")
 async def run_pipeline(request: PipelineRequest, background_tasks: BackgroundTasks):
     """启动完整Pipeline"""
@@ -311,14 +348,26 @@ async def run_pipeline(request: PipelineRequest, background_tasks: BackgroundTas
         request.video_link,
         request.user_video_id,
         request.user_audio_id,
-        request.options
+        request.options,
+        request.confirmed_text,
+        request.extracted_video_path,
+        request.extracted_segments
     )
 
     return {"task_id": task_id}
 
 async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
-                          user_audio_id: str, options: Optional[PipelineOptions]):
-    """执行Pipeline"""
+                          user_audio_id: str, options: Optional[PipelineOptions],
+                          confirmed_text: Optional[str] = None,
+                          extracted_video_path: Optional[str] = None,
+                          extracted_segments: Optional[list] = None):
+    """执行Pipeline
+
+    Args:
+        confirmed_text: 用户已确认的文案（有则跳过下载/转录/改写步骤）
+        extracted_video_path: 已下载的视频路径（有则复用，避免重复下载）
+        extracted_segments: 原始视频的Whisper段落（用于字幕时间戳）
+    """
     loop = asyncio.get_event_loop()
     task_start_time = time_module.time()
 
@@ -334,20 +383,33 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
         if not user_audio:
             raise FileNotFoundError(f"用户音频不存在: {user_audio_id}")
 
-        # Step 1: 下载同行视频
-        save_task(task_id, "processing", 10, "下载同行视频...", task_start_time=task_start_time)
-        video_result = await download_video(video_link)
-        merge_task_result(task_id, {"original_video_path": video_result.video_path})
+        # Step 1: 下载同行视频（若有已确认文案则复用已下载的视频）
+        if confirmed_text and extracted_video_path:
+            save_task(task_id, "processing", 10, "复用已确认视频...", task_start_time=task_start_time)
+            video_result = VideoResult(
+                video_path=extracted_video_path,
+                duration=0, desc=""
+            )
+            original_text = confirmed_text
+            rewritten = confirmed_text
+            original_segments = extracted_segments  # 用于字幕时间戳
+            merge_task_result(task_id, {"original_video_path": extracted_video_path})
+        else:
+            save_task(task_id, "processing", 10, "下载同行视频...", task_start_time=task_start_time)
+            video_result = await download_video(video_link)
+            merge_task_result(task_id, {"original_video_path": video_result.video_path})
 
-        # Step 2: Whisper识别
-        save_task(task_id, "processing", 25, "识别语音文案...", task_start_time=task_start_time)
-        transcription = await transcribe(video_result.video_path)
-        merge_task_result(task_id, {"original_text": transcription.text})
+            # Step 2: Whisper识别
+            save_task(task_id, "processing", 25, "识别语音文案...", task_start_time=task_start_time)
+            transcription = await transcribe(video_result.video_path)
+            original_segments = transcription.segments
+            merge_task_result(task_id, {"original_text": transcription.text})
 
-        # Step 3: 千问改写
-        save_task(task_id, "processing", 40, "改写文案...", task_start_time=task_start_time)
-        rewritten = await rewrite(transcription.text, options.rewrite_style if options else "口语化")
-        merge_task_result(task_id, {"rewritten_text": rewritten})
+            # Step 3: 千问改写
+            save_task(task_id, "processing", 40, "改写文案...", task_start_time=task_start_time)
+            original_text = transcription.text
+            rewritten = await rewrite(original_text, options.rewrite_style if options else "口语化")
+            merge_task_result(task_id, {"rewritten_text": rewritten})
 
 
         # Step 4: 音色克隆 + TTS
@@ -393,7 +455,7 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
             save_task(task_id, "processing", 85, "添加字幕...", task_start_time=task_start_time)
             # 用改写文案 + 原始时间戳生成字幕（避免重新转录 TTS 音频造成的误差）
             subtitle_path = str(TASKS_DIR / f"{task_id}_subtitle.srt")
-            generate_srt_from_rewritten(rewritten, transcription.segments, subtitle_path)
+            generate_srt_from_rewritten(rewritten, original_segments, subtitle_path)
             current_video = await loop.run_in_executor(
                 None, burn_subtitle, current_video, subtitle_path,
                 str(TASKS_DIR / f"{task_id}_subtitled.mp4"), None
@@ -428,7 +490,7 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
         save_task(task_id, "completed", 100, "完成!", {
             "video_path": current_video,
             "original_video_path": video_result.video_path,
-            "original_text": transcription.text,
+            "original_text": original_text,
             "rewritten_text": rewritten
         }, task_start_time=task_start_time)
 
