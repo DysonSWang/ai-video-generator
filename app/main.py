@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.services.video_downloader import download_video, VideoResult
-from app.services.speech_to_text import transcribe
+from app.services.speech_to_text import transcribe, TranscriptionSegment
 from app.services.text_rewrite import rewrite
 from app.services.voice_clone import clone_and_synthesize
 from app.services.lip_sync import generate_lip_sync_by_provider
@@ -401,7 +401,10 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
             )
             original_text = confirmed_text
             rewritten = confirmed_text
-            original_segments = extracted_segments  # 用于字幕时间戳
+            original_segments = [
+                TranscriptionSegment(**seg) if isinstance(seg, dict) else seg
+                for seg in (extracted_segments or [])
+            ]  # 用于字幕时间戳
             merge_task_result(task_id, {"original_video_path": extracted_video_path})
         else:
             save_task(task_id, "processing", 10, "下载同行视频...", task_start_time=task_start_time)
