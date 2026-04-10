@@ -695,6 +695,16 @@
 
             <!-- Result Section (Hidden by default) -->
             <div id="resultSection" class="hidden mt-8">
+                <div class="glass-card p-4 mb-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i data-lucide="film" class="w-5 h-5 text-rose-400"></i>
+                        <span class="font-medium text-white">最终生成视频</span>
+                    </div>
+                    <video id="finalVideoPlayer" controls class="w-full max-h-80 rounded-lg bg-black/50">
+                        您的浏览器不支持视频播放
+                    </video>
+                </div>
+
                 <div class="glass-card p-6 rounded-xl text-center">
                     <div class="w-14 h-14 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
                         <i data-lucide="check-circle" class="w-7 h-7 text-green-400"></i>
@@ -1267,6 +1277,14 @@
                             if (ov) ov.textContent = data.result.original_video_path || '无';
                             if (ot) ot.textContent = data.result.original_text || '无';
                             if (rt) rt.textContent = data.result.rewritten_text || '无';
+                            // 设置最终视频预览
+                            const fvp = document.getElementById('finalVideoPlayer');
+                            if (fvp && data.result.video_path) {
+                                // /home/admin/ai-video-generator/assets/... -> /assets/...
+                                const absPath = data.result.video_path;
+                                const vp = absPath.replace('/home/admin/ai-video-generator', '');
+                                fvp.src = vp;
+                            }
                         }
                         if (btn) {
                             btn.disabled = false;
