@@ -9,7 +9,6 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 from playwright.sync_api import sync_playwright, Playwright
-from playwright_stealth import Stealth
 
 # CDP配置
 CDP_PORT = 9223
@@ -87,7 +86,6 @@ class VideoDownloader:
             # 创建独立 context 和 page，不复用用户现有的标签页
             context = browser.new_context()
             page = context.new_page()
-            Stealth().apply_stealth_sync(page)
 
             try:
                 # 抖音视频URL处理
@@ -142,7 +140,15 @@ class VideoDownloader:
                         direct_url = url
                     print(f">>> 访问: {direct_url}")
                     page.goto(direct_url, timeout=60000, wait_until='domcontentloaded')
-                    page.wait_for_timeout(2000)
+                    page.wait_for_timeout(5000)
+
+                    # 短链接会302重定向到这里，重新提取 video_id
+                    if not video_id:
+                        final_url = page.url
+                        m = re.search(r'/video/(\d+)', final_url)
+                        if m:
+                            video_id = m.group(1)
+                            print(f">>> 从重定向URL提取到video_id: {video_id}")
 
                 # 多次尝试提取视频URL（抖音视频URL有窗口期）
                 video_url = None
@@ -221,6 +227,8 @@ class VideoDownloader:
                     if check.stdout.strip() == 'audio':
                         print(f">>> 文件已存在且有音轨，跳过下载: {filepath.name}")
                         return VideoResult(video_path=str(filepath), duration=duration, desc=title)
+                    # 无音轨（如纯视频或下载不完整），重新下载
+                    print(f">>> 文件已存在但无音轨，重新下载: {filepath.name}")
 
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
