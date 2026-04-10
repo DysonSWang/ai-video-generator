@@ -533,6 +533,17 @@
 
                 <!-- 文案确认面板 -->
                 <div id="textConfirmPanel" class="hidden">
+                    <!-- 视频预览 -->
+                    <div id="videoPreviewContainer" class="hidden glass-card p-4 mb-3">
+                        <div class="flex items-center gap-2 mb-2">
+                            <i data-lucide="film" class="w-4 h-4 text-rose-400"></i>
+                            <span class="text-sm font-medium text-gray-300">同行视频预览</span>
+                        </div>
+                        <video id="videoPreviewPlayer" controls class="w-full max-h-48 rounded-lg bg-black/50">
+                            您的浏览器不支持视频播放
+                        </video>
+                    </div>
+
                     <!-- 原始文案 -->
                     <div class="glass-card p-6">
                         <div class="flex items-center justify-between mb-3">
@@ -867,6 +878,14 @@
                 document.getElementById('textConfirmPanel').classList.remove('hidden');
                 document.getElementById('rewrittenPanel').classList.add('hidden');
                 document.getElementById('textConfirmActions').classList.add('hidden');
+
+                // 视频预览
+                if (data.video_url) {
+                    const videoPlayer = document.getElementById('videoPreviewPlayer');
+                    const videoContainer = document.getElementById('videoPreviewContainer');
+                    videoPlayer.src = data.video_url;
+                    videoContainer.classList.remove('hidden');
+                }
 
                 btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i><span>已识别</span>';
                 btn.classList.remove('bg-rose-500', 'hover:bg-rose-600');

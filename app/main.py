@@ -176,6 +176,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# 挂载静态文件（用于视频预览）
+app.mount("/assets", StaticFiles(directory=str(UPLOAD_DIR)), name="assets")
+
 # ============== 辅助函数 ==============
 
 def _resolve_file_path(upload_dir: Path, file_id: str, extensions: list) -> Optional[str]:
@@ -312,8 +315,14 @@ async def extract_only(request: ExtractOnlyRequest):
     try:
         video_result = await download_video(request.url)
         transcription = await transcribe(video_result.video_path)
+        # 转换为 HTTP 可访问的 URL
+        video_url = video_result.video_path
+        if video_url.startswith("/"):
+            # 生成相对 URL 路径
+            video_url = f"/assets/videos/{Path(video_result.video_path).name}"
         return {
             "video_path": video_result.video_path,
+            "video_url": video_url,
             "duration": video_result.duration,
             "original_text": transcription.text,
             "segments": [
