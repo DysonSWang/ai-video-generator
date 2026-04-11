@@ -1397,7 +1397,10 @@
                     const iconClass = t.status === 'completed' ? 'text-green-400' : t.status === 'failed' ? 'text-red-400' : 'text-rose-400 animate-spin';
                     const statusText = t.status === 'completed' ? '已完成' : t.status === 'failed' ? '失败' : t.progress + '%';
                     const date = new Date(t.created_at).toLocaleString('zh-CN');
+                    const isFailed = t.status === 'failed';
                     const msg = t.message || (t.status === 'completed' ? '生成完成' : '处理中');
+                    // 失败时显示简短提示，不直接展示错误信息
+                    const displayMsg = isFailed ? '点击查看原因' : msg;
                     const videoPath = t.result?.video_path || '';
                     const playBtn = t.status === 'completed' && videoPath
                         ? `<button onclick="event.stopPropagation();openVideoPreview('${t.task_id}')" class="p-1 hover:bg-white/10 rounded transition-colors cursor-pointer" title="预览"><i data-lucide="play-circle" class="w-5 h-5 text-rose-400"></i></button>`
@@ -1417,20 +1420,20 @@
                     const userAudioId = t.result?.user_audio_id || '';
                     const taskId = t.task_id || '';
 
-                    // 判断是否有详情可展示
-                    const hasDetails = (videoLink || originalText || rewrittenText || userVideoId || userAudioId) && t.status === 'completed';
+                    // 判断是否有详情可展示（成功任务显示详情，失败任务显示错误原因）
+                    const hasDetails = (videoLink || originalText || rewrittenText || userVideoId || userAudioId || isFailed) && (t.status === 'completed' || isFailed);
 
                     return `
                         <div class="glass-card p-4 flex items-center justify-between hover:bg-white/10 transition-colors">
                             <div class="flex items-center gap-3 flex-1 min-w-0">
                                 <i data-lucide="${iconName}" class="w-5 h-5 ${iconClass} flex-shrink-0"></i>
                                 <div class="min-w-0 flex-1">
-                                    <div class="text-sm font-medium truncate">${msg}</div>
+                                    <div class="text-sm font-medium ${isFailed ? 'text-red-400 cursor-pointer hover:text-red-300' : ''} truncate" ${isFailed ? `onclick="event.stopPropagation();toggleHistoryDetail('${taskId}')"` : ''}>${displayMsg}</div>
                                     <div class="text-xs text-gray-500">${date}</div>
                                 </div>
                             </div>
                             <div class="flex items-center gap-2 flex-shrink-0">
-                                ${hasDetails ? `<button onclick="event.stopPropagation();toggleHistoryDetail('${taskId}')" class="p-1 hover:bg-white/10 rounded transition-colors cursor-pointer" title="查看详情" id="detailBtn_${taskId}"><i data-lucide="chevron-down" class="w-4 h-4 text-gray-400 transition-transform" id="detailIcon_${taskId}"></i></button>` : ''}
+                                ${hasDetails ? `<button onclick="event.stopPropagation();toggleHistoryDetail('${taskId}')" class="p-1 hover:bg-white/10 rounded transition-colors cursor-pointer" title="${isFailed ? '查看原因' : '查看详情'}" id="detailBtn_${taskId}"><i data-lucide="chevron-down" class="w-4 h-4 text-gray-400 transition-transform" id="detailIcon_${taskId}"></i></button>` : ''}
                                 <span class="text-xs ${t.status === 'completed' ? 'text-green-400' : t.status === 'failed' ? 'text-red-400' : 'text-gray-400'}">${statusText}</span>
                                 ${playBtn}
                                 ${downloadBtn}
@@ -1439,7 +1442,8 @@
                         </div>
                         ${hasDetails ? `
                         <div id="detail_${taskId}" class="hidden mt-2 p-4 bg-black/20 rounded-lg border border-white/5">
-                            ${videoLink ? `<div class="mb-3"><div class="text-xs text-gray-500 mb-1">同行视频</div><a href="${videoLink}" target="_blank" class="text-rose-400 hover:text-rose-300 text-sm break-all">${videoLink}</a></div>` : ''}
+                            ${isFailed && msg ? `<div class="mb-3"><div class="text-xs text-gray-500 mb-1">失败原因</div><div class="text-red-300 text-sm bg-black/30 rounded p-2 max-h-40 overflow-y-auto whitespace-pre-wrap">${msg}</div></div>` : ''}
+                            ${videoLink ? `<div class="mb-3"><div class="text-xs text-gray-500 mb-1">参考视频</div><a href="${videoLink}" target="_blank" class="text-rose-400 hover:text-rose-300 text-sm break-all">${videoLink}</a></div>` : ''}
                             ${userVideoId ? `<div class="mb-3"><div class="text-xs text-gray-500 mb-1">用户视频</div><div class="text-gray-300 text-sm">${userVideoId}</div></div>` : ''}
                             ${userAudioId ? `<div class="mb-3"><div class="text-xs text-gray-500 mb-1">用户音频</div><div class="text-gray-300 text-sm">${userAudioId}</div></div>` : ''}
                             ${originalText ? `<div class="mb-3"><div class="text-xs text-gray-500 mb-1">原始文案</div><div class="text-gray-300 text-sm bg-black/20 rounded p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">${originalText.substring(0, 200)}${originalText.length > 200 ? '...' : ''}</div></div>` : ''}
