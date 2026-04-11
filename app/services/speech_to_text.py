@@ -9,14 +9,21 @@ from typing import List, Optional
 import whisper
 import numpy as np
 
-# 模型缓存
-_model = None
+# 模型缓存（按名称）
+_models = {}
 
 @dataclass
 class TranscriptionSegment:
     start: float  # 秒
     end: float    # 秒
     text: str
+    words: Optional[List['Word']] = None
+
+@dataclass
+class Word:
+    word: str
+    start: float
+    end: float
 
 @dataclass
 class TranscriptionResult:
@@ -25,13 +32,13 @@ class TranscriptionResult:
     language: str       # 语言
 
 def get_model(model_name: str = "base"):
-    """获取Whisper模型（单例）"""
-    global _model
-    if _model is None:
+    """获取Whisper模型（按名称缓存）"""
+    global _models
+    if model_name not in _models:
         print(f">>> 加载Whisper {model_name} 模型...")
-        _model = whisper.load_model(model_name)
+        _models[model_name] = whisper.load_model(model_name)
         print(">>> 模型加载完成")
-    return _model
+    return _models[model_name]
 
 def extract_audio(video_path: str, output_path: Optional[str] = None) -> str:
     """从视频提取音频"""
@@ -83,21 +90,28 @@ async def transcribe(
         result = model.transcribe(
             audio_path,
             language=language,
-            task="transcribe"
+            task="transcribe",
+            word_timestamps=True
         )
         return result
 
     result = await loop.run_in_executor(None, _transcribe_sync)
 
     # 转换为 TranscriptionResult
-    segments = [
-        TranscriptionSegment(
+    segments = []
+    for seg in result['segments']:
+        words = None
+        if seg.get('words'):
+            words = [
+                Word(word=w['word'].strip(), start=w['start'], end=w['end'])
+                for w in seg['words'] if w['word'].strip()
+            ]
+        segments.append(TranscriptionSegment(
             start=seg['start'],
             end=seg['end'],
-            text=seg['text'].strip()
-        )
-        for seg in result['segments']
-    ]
+            text=seg['text'].strip(),
+            words=words
+        ))
 
     return TranscriptionResult(
         text=result['text'].strip(),

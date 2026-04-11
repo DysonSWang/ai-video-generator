@@ -26,10 +26,32 @@ from app.services.speech_to_text import transcribe, TranscriptionSegment
 from app.services.text_rewrite import rewrite, polish
 from app.services.voice_clone import clone_and_synthesize
 from app.services.lip_sync import generate_lip_sync_by_provider
-from app.services.subtitle import generate_srt_async, generate_srt_from_rewritten, generate_ass_from_rewritten, burn_subtitle, SubtitleStyle
+from app.services.subtitle import generate_srt_async, generate_srt_from_rewritten, generate_ass_from_rewritten, generate_ass_from_tts_audio, burn_subtitle, SubtitleStyle
+from app.services.speech_to_text import extract_audio
 from app.services.music import add_music, MusicOptions
 from app.services.pip import add_pip
 from app.config import CDP_PORT
+
+# ============== 辅助函数 ==============
+def _merge_audio_to_video(video_path: str, audio_path: str, output_path: str) -> str:
+    """将音频合并到视频（生成中间文件，供后续重新烧录字幕使用）"""
+    import subprocess
+    cmd = [
+        'ffmpeg', '-y',
+        '-i', video_path,
+        '-i', audio_path,
+        '-map', '0:v',
+        '-map', '1:a',
+        '-c:v', 'libx264', '-preset', 'fast',
+        '-c:a', 'aac',
+        '-shortest',
+        output_path
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"音频合并失败: {result.stderr}")
+    return output_path
+
 
 # ============== 配置 ==============
 BASE_DIR = Path(__file__).parent.parent
@@ -166,6 +188,10 @@ class ExtractOnlyRequest(BaseModel):
 class RewriteTextRequest(BaseModel):
     text: str
     style: str = "口语化"
+
+
+class ReburnSubtitleRequest(BaseModel):
+    subtitle_text: str = ""
 
 class PolishTextRequest(BaseModel):
     text: str
@@ -520,7 +546,8 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
 
         # Step 4: 音色克隆 + TTS
         save_task(task_id, "processing", 55, "克隆声音并配音...", task_start_time=task_start_time)
-        tts_result = await clone_and_synthesize(user_audio, rewritten)
+        tts_audio_path = str(TASKS_DIR / f"{task_id}_tts.mp3")
+        tts_result = await clone_and_synthesize(user_audio, rewritten, output_path=tts_audio_path)
         merge_task_result(task_id, {
             "tts_audio_path": tts_result.audio_path,
             "pipeline_step": 4
@@ -529,7 +556,6 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
         # Step 5: 口型同步
         save_task(task_id, "processing", 70, "生成口型同步视频...", task_start_time=task_start_time)
         provider = options.lip_sync_provider if options else "infinite_talk"
-        lip_sync_mode = options.lip_sync_mode if options and options.lip_sync_mode else "图片数字人"
 
         from app.services.lip_sync import generate_lip_sync_by_provider
 
@@ -538,7 +564,10 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
         user_ext = Path(user_video).suffix.lower()
         is_image = user_ext not in VIDEO_EXTS
 
-        # InfiniteTalk：图片直接用，视频提取帧
+        # 自动决定数字人模式：传视频→视频数字人，传图片→图片数字人
+        lip_sync_mode = "视频数字人" if not is_image else "图片数字人"
+
+        # InfiniteTalk：图片直接用，视频作为ref_video
         if provider == "infinite_talk":
             person_image_path = str(TASKS_DIR / f"{task_id}_person.jpg")
             if is_image:
@@ -546,12 +575,11 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
                 shutil.copy2(user_video, person_image_path)
                 print(f">>> 使用上传图片作为形象: {person_image_path}")
             else:
+                # 视频模式：提取一帧作为预览图，原始视频作为ref_video
                 _extract_frame_from_video(user_video, person_image_path)
 
-            # 视频数字人模式需要传入ref_video（且用户上传的必须是视频）
-            ref_video = None
-            if lip_sync_mode == "视频数字人" and not is_image:
-                ref_video = user_video
+            # 视频数字人模式：上传的原始视频作为参考视频
+            ref_video = user_video if not is_image else None
 
             lip_sync_result = await generate_lip_sync_by_provider(
                 person_image_path, tts_result.audio_path,
@@ -559,7 +587,8 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
                 mode=lip_sync_mode,
                 ref_video=ref_video,
                 output_path=str(TASKS_DIR / f"{task_id}_lipsync.mp4"),
-                task_id=task_id
+                task_id=task_id,
+                max_wait=1800  # 30分钟，支持长任务
             )
         else:
             # Kling只支持视频，不支持图片
@@ -568,7 +597,8 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
             lip_sync_result = await generate_lip_sync_by_provider(
                 user_video, tts_result.audio_path, provider=provider,
                 output_path=str(TASKS_DIR / f"{task_id}_lipsync.mp4"),
-                task_id=task_id
+                task_id=task_id,
+                max_wait=1800  # 30分钟，支持长任务
             )
         current_video = lip_sync_result["video_path"]
         merge_task_result(task_id, {
@@ -579,8 +609,6 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
         # Step 6: 字幕
         if options and options.add_subtitle:
             save_task(task_id, "processing", 85, "添加字幕...", task_start_time=task_start_time)
-            # 用改写文案 + 原始时间戳生成ASS字幕（支持自动换行和边界控制）
-            subtitle_path = str(TASKS_DIR / f"{task_id}_subtitle.ass")
             subtitle_style = SubtitleStyle(
                 font_size=72,
                 font_color="&HFFFFFF",
@@ -590,18 +618,32 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
                 position="bottom",
                 margin_v=100
             )
-            generate_ass_from_rewritten(rewritten, original_segments, subtitle_path,
-                                        audio_duration=tts_result.duration, style=subtitle_style)
-            # 用唯一文件名避免浏览器缓存
+            # 先合并音视频为中间文件（保留原始合并结果，供后续重新烧录字幕使用）
+            lipsync_audio_path = str(TASKS_DIR / f"{task_id}_lipsync_audio.mp4")
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _merge_audio_to_video,
+                current_video, tts_result.audio_path, lipsync_audio_path)
+
+            # 用Whisper转录TTS音频，获得真实词级时间戳，生成精确字幕
+            subtitle_path = str(TASKS_DIR / f"{task_id}_subtitle.ass")
+            await generate_ass_from_tts_audio(
+                rewritten, tts_result.audio_path, subtitle_path, style=subtitle_style
+            )
+
+            # 烧录字幕（基于已合并音视频的视频，不再传audio_path避免重复）
             import uuid
             final_video_name = f"{task_id}_{uuid.uuid4().hex[:8]}_subtitled.mp4"
             current_video = await loop.run_in_executor(
-                None, burn_subtitle, current_video, subtitle_path,
+                None, burn_subtitle, lipsync_audio_path, subtitle_path,
                 str(TASKS_DIR / final_video_name), subtitle_style,
-                tts_result.audio_path
+                None  # 不再传audio_path，避免音轨重复
             )
             merge_task_result(task_id, {
-                "subtitle_srt_path": subtitle_path,
+                "subtitle_ass_path": subtitle_path,
+                "lipsync_audio_path": lipsync_audio_path,
+                "tts_audio_path": tts_result.audio_path,
+                "audio_duration": tts_result.duration,
+                "rewritten_text": rewritten,
                 "pipeline_step": 6
             })
 
@@ -633,14 +675,21 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
             merge_task_result(task_id, {"pipeline_step": 8})
 
         # 完成
-        save_task(task_id, "completed", 100, "完成!", {
+        final_result = {
             "video_path": current_video,
-            "original_video_path": video_result.video_path,
+            "original_video_path": lipsync_audio_path if options and options.add_subtitle else current_video,
             "original_text": original_text,
             "rewritten_text": rewritten,
             "video_duration": video_duration,
             "pipeline_step": 9
-        }, task_start_time=task_start_time)
+        }
+        # 保留Step6的音频信息
+        if options and options.add_subtitle:
+            final_result["subtitle_ass_path"] = subtitle_path
+            final_result["lipsync_audio_path"] = lipsync_audio_path
+            final_result["tts_audio_path"] = tts_result.audio_path
+            final_result["audio_duration"] = tts_result.duration
+        save_task(task_id, "completed", 100, "完成!", final_result, task_start_time=task_start_time)
 
     except Exception as e:
         import traceback
@@ -694,6 +743,111 @@ async def get_result(task_id: str):
     if not Path(video_path).exists():
         raise HTTPException(status_code=500, detail="视频文件不存在")
     return FileResponse(video_path, media_type="video/mp4", filename="result.mp4")
+
+
+@app.post("/api/task/{task_id}/reburn-subtitle")
+async def reburn_subtitle(task_id: str, request: dict):
+    """重新烧录字幕（不改视频，只改字幕）
+
+    优先使用 lipsync_audio_path（有独立音视频合并文件）。
+    旧任务没有该文件时，直接用 video_path（含已合并音频）重新烧录。
+    """
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    if task["status"] != "completed":
+        raise HTTPException(status_code=400, detail="任务未完成")
+
+    result = task.get("result") or {}
+    video_path = result.get("video_path")
+    lipsync_audio = result.get("lipsync_audio_path")  # 新任务有
+    tts_audio = result.get("tts_audio_path")
+    audio_duration = result.get("audio_duration") or 0
+    rewritten_text = request.get("subtitle_text", result.get("rewritten_text", ""))
+
+    if not audio_duration and video_path and Path(video_path).exists():
+        # 从视频文件获取音频时长
+        import subprocess
+        try:
+            probe = subprocess.run(
+                ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                 '-of', 'csv=p=0', video_path],
+                capture_output=True, text=True, timeout=10
+            )
+            audio_duration = float(probe.stdout.strip() or 0)
+        except Exception:
+            pass
+
+    if not video_path or not Path(video_path).exists():
+        raise HTTPException(status_code=500, detail="视频文件不存在，请重新生成")
+
+    # 优先用 original_video_path / lipsync_audio_path（无字幕的原版视频）
+    # 新任务有 lipsync_audio_path；旧任务没有则尝试在任务目录里找 lipsync_audio.mp4
+    original_video = result.get("original_video_path")
+    lipsync_candidate = lipsync_audio or str(TASKS_DIR / f"{task_id}_lipsync_audio.mp4")
+    source_video = original_video if (original_video and Path(original_video).exists()) else (
+        lipsync_candidate if (Path(lipsync_candidate).exists()) else video_path
+    )
+
+    subtitle_style = SubtitleStyle(
+        font_size=72,
+        font_color="&HFFFFFF",
+        outline_color="&H000000",
+        outline_width=4,
+        bold=True,
+        position="bottom",
+        margin_v=120
+    )
+
+    # 生成新ASS字幕
+    subtitle_path = str(TASKS_DIR / f"{task_id}_subtitle_v2.ass")
+
+    # 确定用于Whisper对齐的音频来源：
+    # 优先用 tts_audio_path（独立TTS文件），但如果文件不存在或路径可疑则从lipsync提取
+    loop = asyncio.get_event_loop()
+    audio_for_whisper = None
+    if tts_audio and Path(tts_audio).exists():
+        # 检查tts_audio是否为共享路径（可能被覆盖），优先从lipsync提取
+        if "tts_output.mp3" in tts_audio and lipsync_audio and Path(lipsync_audio).exists():
+            # tts_output.mp3是共享路径，可能被覆盖，从lipsync提取
+            audio_for_whisper = await loop.run_in_executor(
+                None, extract_audio, lipsync_audio, str(TASKS_DIR / f"{task_id}_whisper_audio.wav")
+            )
+        else:
+            audio_for_whisper = tts_audio
+    elif lipsync_candidate and Path(lipsync_candidate).exists():
+        # 旧任务没有tts_audio，从lipsync提取音频
+        audio_for_whisper = await loop.run_in_executor(
+            None, extract_audio, lipsync_candidate, str(TASKS_DIR / f"{task_id}_whisper_audio.wav")
+        )
+
+    if audio_for_whisper:
+        await generate_ass_from_tts_audio(
+            rewritten_text, audio_for_whisper, subtitle_path, style=subtitle_style
+        )
+    else:
+        # 旧任务没有任何音频，退化为估算
+        generate_ass_from_rewritten(
+            rewritten_text, [],
+            subtitle_path,
+            audio_duration=audio_duration,
+            style=subtitle_style
+        )
+
+    # 烧录字幕（source_video 已有音轨，不传audio_path避免重复）
+    import uuid
+    final_video_name = f"{task_id}_{uuid.uuid4().hex[:8]}_subtitled.mp4"
+    final_path = await loop.run_in_executor(
+        None, burn_subtitle, source_video, subtitle_path,
+        str(TASKS_DIR / final_video_name), subtitle_style, None
+    )
+
+    return {
+        "video_path": final_path,
+        "subtitle_path": subtitle_path,
+        "message": "字幕重新烧录完成"
+    }
+
 
 # ============== 启动 ==============
 if __name__ == "__main__":

@@ -166,7 +166,8 @@ async def synthesize(
 async def clone_and_synthesize(
     reference_audio: str,
     text: str,
-    voice_name: str = "my_voice"
+    voice_name: str = "my_voice",
+    output_path: Optional[str] = None
 ) -> SynthesisResult:
     """一键：克隆音色并合成
 
@@ -174,6 +175,7 @@ async def clone_and_synthesize(
         reference_audio: 参考音频路径
         text: 要合成的文本
         voice_name: 音色名称
+        output_path: 输出音频路径（不传则用默认路径）
 
     Returns:
         SynthesisResult: 包含音频路径和时长
@@ -182,7 +184,7 @@ async def clone_and_synthesize(
     clone_result = await clone_voice(reference_audio, voice_name)
 
     # 2. 合成语音
-    return await synthesize(text, clone_result.voice_uri)
+    return await synthesize(text, clone_result.voice_uri, output_path=output_path)
 
 
 if __name__ == "__main__":
