@@ -228,9 +228,12 @@
         .video-preview-close:hover { color: #fff; }
         .video-preview-body {
             padding: 12px 16px;
+            min-height: 200px;
         }
         .video-preview-body video {
             width: 100%;
+            height: auto;
+            max-height: 70vh;
             border-radius: 8px;
             background: #000;
         }
@@ -715,7 +718,7 @@
                                 <option value="活泼" class="bg-gray-800">活泼有趣</option>
                             </select>
                         </div>
-                        <div class="glass p-4 rounded-lg">
+                        <div id="providerSection" class="glass p-4 rounded-lg">
                             <label class="block text-xs text-gray-400 mb-3">口型同步引擎</label>
                             <div class="grid grid-cols-2 gap-2">
                                 <button type="button" id="btnInfiniteTalk" onclick="setLipSyncProvider('infinite_talk')" class="provider-btn active">
@@ -856,25 +859,19 @@
                         </div>
                         <p class="text-xs text-gray-500 mt-2">${(file.size / 1024 / 1024).toFixed(2)} MB</p>
                     `;
-                    // 视频上传：启用 Kling
-                    const klingBtn = document.getElementById('btnKling');
-                    if (klingBtn) {
-                        klingBtn.classList.remove('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
-                        klingBtn.title = '';
-                    }
+                    // 视频上传：显示provider选择（Kling/InfiniteTalk都可用）
+                    const providerSection = document.getElementById('providerSection');
+                    if (providerSection) providerSection.classList.remove('hidden');
                 } else if (fileType === 'image') {
                     const imgUrl = URL.createObjectURL(file);
                     preview.innerHTML = `
                         <img src="${imgUrl}" class="max-h-20 rounded-lg mx-auto object-contain" alt="预览">
                         <p class="text-xs text-gray-500 mt-2">${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)</p>
                     `;
-                    // 图片上传：自动切 InfiniteTalk，禁用 Kling
+                    // 图片上传：自动切 InfiniteTalk，隐藏provider选择（只有InfiniteTalk支持）
                     setLipSyncProvider('infinite_talk');
-                    const klingBtn = document.getElementById('btnKling');
-                    if (klingBtn) {
-                        klingBtn.classList.add('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
-                        klingBtn.title = '图片模式不支持可灵，请上传视频';
-                    }
+                    const providerSection = document.getElementById('providerSection');
+                    if (providerSection) providerSection.classList.add('hidden');
                 } else if (fileType === 'audio') {
                     preview.innerHTML = `
                         <div class="flex items-center justify-center gap-3">
@@ -1403,26 +1400,52 @@
                     const msg = t.message || (t.status === 'completed' ? '生成完成' : '处理中');
                     const videoPath = t.result?.video_path || '';
                     const playBtn = t.status === 'completed' && videoPath
-                        ? `<button onclick="event.stopPropagation();openVideoPreview('${videoPath.replace(/'/g, "\\'")}')" class="p-1 hover:bg-white/10 rounded transition-colors cursor-pointer" title="预览"><i data-lucide="play-circle" class="w-5 h-5 text-rose-400"></i></button>`
+                        ? `<button onclick="event.stopPropagation();openVideoPreview('${t.task_id}')" class="p-1 hover:bg-white/10 rounded transition-colors cursor-pointer" title="预览"><i data-lucide="play-circle" class="w-5 h-5 text-rose-400"></i></button>`
                         : '';
                     const downloadBtn = t.status === 'completed'
                         ? `<button onclick="event.stopPropagation();downloadFromHistory('${t.task_id}')" class="p-1 hover:bg-white/10 rounded transition-colors cursor-pointer" title="下载"><i data-lucide="download" class="w-4 h-4 text-gray-400"></i></button>`
                         : '';
+                    const reburnBtn = t.status === 'completed' && t.result?.rewritten_text
+                        ? `<button onclick="event.stopPropagation();openSubtitleReburn('${t.task_id}')" class="p-1 hover:bg-white/10 rounded transition-colors cursor-pointer" title="重新烧录字幕" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>`
+                        : '';
+
+                    // 详情数据
+                    const videoLink = t.result?.video_link || '';
+                    const originalText = t.result?.original_text || '';
+                    const rewrittenText = t.result?.rewritten_text || '';
+                    const userVideoId = t.result?.user_video_id || '';
+                    const userAudioId = t.result?.user_audio_id || '';
+                    const taskId = t.task_id || '';
+
+                    // 判断是否有详情可展示
+                    const hasDetails = (videoLink || originalText || rewrittenText || userVideoId || userAudioId) && t.status === 'completed';
+
                     return `
                         <div class="glass-card p-4 flex items-center justify-between hover:bg-white/10 transition-colors">
-                            <div class="flex items-center gap-3">
-                                <i data-lucide="${iconName}" class="w-5 h-5 ${iconClass}"></i>
-                                <div>
-                                    <div class="text-sm font-medium">${msg}</div>
+                            <div class="flex items-center gap-3 flex-1 min-w-0">
+                                <i data-lucide="${iconName}" class="w-5 h-5 ${iconClass} flex-shrink-0"></i>
+                                <div class="min-w-0 flex-1">
+                                    <div class="text-sm font-medium truncate">${msg}</div>
                                     <div class="text-xs text-gray-500">${date}</div>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                ${hasDetails ? `<button onclick="event.stopPropagation();toggleHistoryDetail('${taskId}')" class="p-1 hover:bg-white/10 rounded transition-colors cursor-pointer" title="查看详情" id="detailBtn_${taskId}"><i data-lucide="chevron-down" class="w-4 h-4 text-gray-400 transition-transform" id="detailIcon_${taskId}"></i></button>` : ''}
                                 <span class="text-xs ${t.status === 'completed' ? 'text-green-400' : t.status === 'failed' ? 'text-red-400' : 'text-gray-400'}">${statusText}</span>
                                 ${playBtn}
                                 ${downloadBtn}
+                                ${reburnBtn}
                             </div>
                         </div>
+                        ${hasDetails ? `
+                        <div id="detail_${taskId}" class="hidden mt-2 p-4 bg-black/20 rounded-lg border border-white/5">
+                            ${videoLink ? `<div class="mb-3"><div class="text-xs text-gray-500 mb-1">同行视频</div><a href="${videoLink}" target="_blank" class="text-rose-400 hover:text-rose-300 text-sm break-all">${videoLink}</a></div>` : ''}
+                            ${userVideoId ? `<div class="mb-3"><div class="text-xs text-gray-500 mb-1">用户视频</div><div class="text-gray-300 text-sm">${userVideoId}</div></div>` : ''}
+                            ${userAudioId ? `<div class="mb-3"><div class="text-xs text-gray-500 mb-1">用户音频</div><div class="text-gray-300 text-sm">${userAudioId}</div></div>` : ''}
+                            ${originalText ? `<div class="mb-3"><div class="text-xs text-gray-500 mb-1">原始文案</div><div class="text-gray-300 text-sm bg-black/20 rounded p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">${originalText.substring(0, 200)}${originalText.length > 200 ? '...' : ''}</div></div>` : ''}
+                            ${rewrittenText ? `<div><div class="text-xs text-gray-500 mb-1">改写后文案</div><div class="text-gray-300 text-sm bg-black/20 rounded p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">${rewrittenText.substring(0, 200)}${rewrittenText.length > 200 ? '...' : ''}</div></div>` : ''}
+                        </div>
+                        ` : ''}
                     `;
                 }).join('');
                 if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -1433,6 +1456,20 @@
 
         function downloadFromHistory(taskId) {
             window.open(`/api/result/${taskId}`, '_blank');
+        }
+
+        function toggleHistoryDetail(taskId) {
+            const detailDiv = document.getElementById('detail_' + taskId);
+            const icon = document.getElementById('detailIcon_' + taskId);
+            if (!detailDiv) return;
+            const isHidden = detailDiv.classList.contains('hidden');
+            if (isHidden) {
+                detailDiv.classList.remove('hidden');
+                if (icon) icon.style.transform = 'rotate(180deg)';
+            } else {
+                detailDiv.classList.add('hidden');
+                if (icon) icon.style.transform = '';
+            }
         }
 
         // 格式化时长
@@ -1683,7 +1720,27 @@
                 <button class="video-preview-close" onclick="closeVideoPreview()">&times;</button>
             </div>
             <div class="video-preview-body">
-                <video id="videoPreviewPlayer" controls playsinline></video>
+                <video id="videoPreviewPlayerModal" controls playsinline></video>
+            </div>
+        </div>
+    </div>
+    <!-- 重新烧录字幕 Modal -->
+    <div id="subReburnModal" class="error-modal-overlay hidden" style="display:none;">
+        <div class="error-modal-box" style="max-width:600px;">
+            <div class="error-modal-header">
+                <span class="error-modal-title">重新烧录字幕</span>
+                <button class="error-modal-close" onclick="closeSubReburn()">&times;</button>
+            </div>
+            <div style="margin: 16px 0;">
+                <p class="text-gray-400 text-sm mb-3">修改下方文案，字幕将按标点分段显示（说到哪里显示哪里）。</p>
+                <textarea id="subReburnText" rows="5"
+                    class="w-full bg-black/30 border border-white/10 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-rose-500/50 resize-none"
+                    placeholder="输入字幕文案..."></textarea>
+            </div>
+            <div id="subReburnStatus" class="text-sm mb-3 hidden"></div>
+            <div class="error-modal-actions">
+                <button id="subReburnBtn" onclick="doSubReburn()" class="error-modal-btn error-modal-copy">重新烧录</button>
+                <button class="error-modal-btn error-modal-ok" onclick="closeSubReburn()">取消</button>
             </div>
         </div>
     </div>
@@ -1698,6 +1755,55 @@
     }
     function closeErrorModal() {
         document.getElementById('errorModal').style.display = 'none';
+    }
+    let subReburnTaskId = null;
+    function openSubtitleReburn(taskId) {
+        subReburnTaskId = taskId;
+        // 从历史记录获取文案
+        fetch('/api/tasks?limit=50')
+            .then(r => r.json())
+            .then(tasks => {
+                const task = tasks.find(t => t.task_id === taskId);
+                const text = task?.result?.rewritten_text || '';
+                document.getElementById('subReburnText').value = text;
+                document.getElementById('subReburnStatus').classList.add('hidden');
+                document.getElementById('subReburnModal').style.display = 'flex';
+            });
+    }
+    function closeSubReburn() {
+        document.getElementById('subReburnModal').style.display = 'none';
+        subReburnTaskId = null;
+    }
+    async function doSubReburn() {
+        if (!subReburnTaskId) return;
+        const text = document.getElementById('subReburnText').value;
+        const btn = document.getElementById('subReburnBtn');
+        const status = document.getElementById('subReburnStatus');
+        btn.disabled = true;
+        btn.textContent = '烧录中...';
+        status.classList.remove('hidden');
+        status.textContent = '正在重新烧录字幕...';
+        try {
+            const res = await fetch(`/api/task/${subReburnTaskId}/reburn-subtitle`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subtitle_text: text })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || '失败');
+            status.textContent = '完成！正在刷新...';
+            // 刷新历史记录
+            loadHistory();
+            // 打开新视频预览
+            openVideoPreview(subReburnTaskId);
+            closeSubReburn();
+        } catch (e) {
+            status.textContent = '失败: ' + e.message;
+            status.style.color = '#f87171';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '重新烧录';
+        }
     }
     function copyErrorMsg() {
         navigator.clipboard.writeText(currentErrorMsg).then(() => {
@@ -1716,18 +1822,18 @@
     });
 
     // Video Preview Modal
-    function openVideoPreview(videoPath) {
+    function openVideoPreview(taskId) {
         const modal = document.getElementById('videoPreviewModal');
-        const player = document.getElementById('videoPreviewPlayer');
+        const player = document.getElementById('videoPreviewPlayerModal');
         if (!modal || !player) return;
-        // Convert file path to HTTP URL
-        const httpUrl = videoPath.replace('/home/admin/ai-video-generator', '');
-        player.src = httpUrl;
+        // Use /api/result endpoint for proper MIME type and caching
+        player.src = `/api/result/${taskId}`;
+        player.load();
         modal.style.display = 'flex';
     }
     function closeVideoPreview() {
         const modal = document.getElementById('videoPreviewModal');
-        const player = document.getElementById('videoPreviewPlayer');
+        const player = document.getElementById('videoPreviewPlayerModal');
         if (modal) modal.style.display = 'none';
         if (player) { player.pause(); player.src = ''; }
     }

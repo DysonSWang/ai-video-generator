@@ -681,7 +681,11 @@ async def execute_pipeline(task_id: str, video_link: str, user_video_id: str,
             "original_text": original_text,
             "rewritten_text": rewritten,
             "video_duration": video_duration,
-            "pipeline_step": 9
+            "pipeline_step": 9,
+            # 记录输入参数，便于历史追溯
+            "video_link": video_link,
+            "user_video_id": user_video_id,
+            "user_audio_id": user_audio_id,
         }
         # 保留Step6的音频信息
         if options and options.add_subtitle:
