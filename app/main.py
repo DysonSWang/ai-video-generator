@@ -968,10 +968,66 @@ async def reburn_subtitle(
         "video_path": final_path,
         "subtitle_path": subtitle_path,
         "message": "字幕重新烧录完成"
-    }
+}
 
 
-# ============== 启动 ==============
+@app.post("/api/task/{task_id}/reburn-music")
+async def reburn_music(
+    task_id: str,
+    request: dict,
+    user: AuthUser = Depends(get_current_user),
+):
+    """重新配置BGM（不改视频和字幕）
+
+    从 task.result.video_path 读取视频，
+    用新的 music_bgm_id + music_volume 重新混音。
+    """
+    task = get_task(task_id, user_id=user.id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    if task["status"] != "completed":
+        raise HTTPException(status_code=400, detail="任务未完成")
+
+    result = task.get("result") or {}
+    video_path = result.get("video_path")
+    if not video_path or not Path(video_path).exists():
+        raise HTTPException(status_code=500, detail="视频文件不存在，请重新生成")
+
+    music_bgm_id = request.get("music_bgm_id")
+    music_volume = request.get("music_volume", 0.3)
+
+    if not music_bgm_id:
+        raise HTTPException(status_code=400, detail="请提供 music_bgm_id")
+
+    from app.services.bgm import get_bgm_by_id, ensure_bgm_downloaded
+    bgm = get_bgm_by_id(music_bgm_id)
+    if not bgm:
+        raise HTTPException(status_code=400, detail="无效的 BGM ID")
+
+    try:
+        music_file = ensure_bgm_downloaded(bgm)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"BGM下载失败: {e}")
+
+    music_opts = MusicOptions(volume=music_volume, fade_in=0.5, fade_out=0.5)
+
+    import uuid
+    final_video_name = f"{task_id}_{uuid.uuid4().hex[:8]}_remix.mp4"
+    final_path = str(TASKS_DIR / final_video_name)
+
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None,
+        add_music,
+        video_path, music_file, final_path, music_opts
+    )
+
+    # 更新 task result
+    merge_task_result(task_id, {
+        "video_path": final_path,
+        "music_bgm_id": music_bgm_id,
+        "music_volume": music_volume,
+    }, user_id=user.id)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
