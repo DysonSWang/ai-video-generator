@@ -790,11 +790,32 @@
                             <input type="hidden" id="lipSyncProvider" value="infinite_talk">
                         </div>
                     </div>
-                    <div class="mt-4">
+                    <div class="mt-4 flex items-center gap-3">
                         <label class="flex items-center gap-3 cursor-pointer">
                             <input type="checkbox" id="addSubtitle" checked class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-rose-500 focus:ring-rose-500">
                             <span class="text-sm">添加字幕</span>
                         </label>
+                    </div>
+                    <!-- BGM 选择 -->
+                    <div class="mt-4">
+                        <label class="block text-xs text-gray-400 mb-2">背景音乐</label>
+                        <div class="flex gap-2 mb-2">
+                            <select id="bgmSelect" onchange="onBgmChange()" class="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white">
+                                <option value="">不使用配乐</option>
+                                <option value="vibrant_days">阳光活力</option>
+                                <option value="peaceful_mind">平静心灵</option>
+                                <option value="warm_memory">温暖记忆</option>
+                                <option value="Inspiring_Cinematic">励志电影</option>
+                                <option value="sunny_morning">阳光早晨</option>
+                                <option value="gentle_chill">轻柔 Chill</option>
+                            </select>
+                            <button type="button" id="bgmPreviewBtn" onclick="toggleBgmPreview()" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white transition-colors" title="预览">▶</button>
+                        </div>
+                        <div id="bgmVolumeRow" class="hidden flex items-center gap-2">
+                            <span class="text-xs text-gray-400">音量</span>
+                            <input type="range" id="bgmVolume" min="0" max="100" value="30" class="flex-1 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                            <span id="bgmVolumeVal" class="text-xs text-gray-400 w-8">30%</span>
+                        </div>
                     </div>
                 </div>
 
@@ -1386,7 +1407,9 @@
                         options: {
                             rewrite_style: rewriteStyle?.value || '口语化',
                             lip_sync_provider: lipSyncProvider?.value || 'infinite_talk',
-                            add_subtitle: addSubtitle?.checked ?? true
+                            add_subtitle: addSubtitle?.checked ?? true,
+                            music_bgm_id: document.getElementById('bgmSelect')?.value || '',
+                            music_volume: (document.getElementById('bgmVolume')?.value || 30) / 100
                         }
                     })
                 });
@@ -2026,6 +2049,69 @@
         const el = document.getElementById('loginError');
         el.textContent = msg;
         el.classList.remove('hidden');
+    }
+
+    // ===== BGM 预览 =====
+    const BGM_URLS = {
+        vibrant_days: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+        peaceful_mind: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+        warm_memory: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3',
+        Inspiring_Cinematic: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3',
+        sunny_morning: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+        gentle_chill: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3',
+    };
+    let bgmAudio = null;
+    let bgmPlaying = false;
+
+    function onBgmChange() {
+        const sel = document.getElementById('bgmSelect');
+        const volRow = document.getElementById('bgmVolumeRow');
+        if (sel?.value) {
+            volRow?.classList.remove('hidden');
+        } else {
+            volRow?.classList.add('hidden');
+        }
+        stopBgmPreview();
+    }
+
+    function toggleBgmPreview() {
+        if (bgmPlaying) {
+            stopBgmPreview();
+        } else {
+            playBgmPreview();
+        }
+    }
+
+    function playBgmPreview() {
+        const sel = document.getElementById('bgmSelect');
+        const bgmId = sel?.value;
+        if (!bgmId || !BGM_URLS[bgmId]) return;
+        if (!bgmAudio) {
+            bgmAudio = new Audio();
+        }
+        bgmAudio.src = BGM_URLS[bgmId];
+        bgmAudio.volume = (document.getElementById('bgmVolume')?.value || 30) / 100;
+        bgmAudio.play().catch(() => {});
+        bgmPlaying = true;
+        const btn = document.getElementById('bgmPreviewBtn');
+        if (btn) btn.textContent = '⏸';
+    }
+
+    function stopBgmPreview() {
+        if (bgmAudio) { bgmAudio.pause(); bgmAudio.currentTime = 0; }
+        bgmPlaying = false;
+        const btn = document.getElementById('bgmPreviewBtn');
+        if (btn) btn.textContent = '▶';
+    }
+
+    // 音量滑块实时更新（页面加载后直接绑定，无需等待 DOMContentLoaded）
+    const _vol = document.getElementById('bgmVolume');
+    const _val = document.getElementById('bgmVolumeVal');
+    if (_vol && _val) {
+        _vol.addEventListener('input', () => {
+            _val.textContent = _vol.value + '%';
+            if (bgmAudio) bgmAudio.volume = _vol.value / 100;
+        });
     }
 
     function goAdmin() {
