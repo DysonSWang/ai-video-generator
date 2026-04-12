@@ -1,0 +1,54 @@
+[Script Info]
+Title=AI Video Subtitles
+ScriptType=v4.00+
+PlayResX: 720
+PlayResY: 1280
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,SimHei,72,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,4,4,5,0,0,640,134
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:01.56,Default,,0,0,0,\N,人越是关注自己
+Dialogue: 0,0:00:01.76,0:00:02.96,Default,,0,0,0,\N,负面情绪就越多
+Dialogue: 0,0:00:02.96,0:00:04.82,Default,,0,0,0,\N,这是我做咨询师三年
+Dialogue: 0,0:00:04.82,0:00:05.96,Default,,0,0,0,\N,最大的感悟
+Dialogue: 0,0:00:06.48,0:00:07.88,Default,,0,0,0,\N,我们所有的内耗
+Dialogue: 0,0:00:08.02,0:00:08.60,Default,,0,0,0,\N,委屈
+Dialogue: 0,0:00:08.86,0:00:09.08,Default,,0,0,0,\N,孤独
+Dialogue: 0,0:00:09.40,0:00:11.16,Default,,0,0,0,\N,以及对亲情
+Dialogue: 0,0:00:11.40,0:00:13.52,Default,,0,0,0,\N,爱情越来越不抱希望
+Dialogue: 0,0:00:13.52,0:00:15.02,Default,,0,0,0,\N,不是别人不够好
+Dialogue: 0,0:00:15.02,0:00:17.00,Default,,0,0,0,\N,而是你的眼里只有自己
+Dialogue: 0,0:00:17.00,0:00:19.78,Default,,0,0,0,\N,很多来访者跟我说ta总是不理解我
+Dialogue: 0,0:00:20.14,0:00:22.92,Default,,0,0,0,\N,给不了我想要的他们总是用异样的眼光看我
+Dialogue: 0,0:00:23.16,0:00:24.42,Default,,0,0,0,\N,一定是我哪里做得不好
+Dialogue: 0,0:00:24.42,0:00:25.98,Default,,0,0,0,\N,我反问那你理解ta吗
+Dialogue: 0,0:00:26.78,0:00:28.54,Default,,0,0,0,\N,你知道他最近有什么压力吗
+Dialogue: 0,0:00:28.84,0:00:31.22,Default,,0,0,0,\N,做什么会让ta真的开心呢
+Dialogue: 0,0:00:31.22,0:00:32.48,Default,,0,0,0,\N,答案往往是沉默
+Dialogue: 0,0:00:32.50,0:00:34.62,Default,,0,0,0,\N,或者一句我不知道
+Dialogue: 0,0:00:34.62,0:00:36.46,Default,,0,0,0,\N,再问你觉得他们都在议论你
+Dialogue: 0,0:00:36.46,0:00:37.04,Default,,0,0,0,\N,否定你
+Dialogue: 0,0:00:37.46,0:00:38.18,Default,,0,0,0,\N,你有求证过吗
+Dialogue: 0,0:00:38.42,0:00:39.42,Default,,0,0,0,\N,还是你猜的
+Dialogue: 0,0:00:39.42,0:00:41.20,Default,,0,0,0,\N,回答虽然是我猜的
+Dialogue: 0,0:00:41.30,0:00:42.22,Default,,0,0,0,\N,但应该就是这样
+Dialogue: 0,0:00:42.22,0:00:43.38,Default,,0,0,0,\N,亲爱的
+Dialogue: 0,0:00:43.58,0:00:45.70,Default,,0,0,0,\N,下次试着把自己放低一点
+Dialogue: 0,0:00:46.16,0:00:47.90,Default,,0,0,0,\N,试着把目光往外挪一点
+Dialogue: 0,0:00:47.90,0:00:49.72,Default,,0,0,0,\N,看见别人的需求和情绪
+Dialogue: 0,0:00:50.16,0:00:51.66,Default,,0,0,0,\N,也感恩别人的付出
+Dialogue: 0,0:00:51.66,0:00:52.86,Default,,0,0,0,\N,永远关注自己
+Dialogue: 0,0:00:52.86,0:00:54.26,Default,,0,0,0,\N,不断索取被爱
+Dialogue: 0,0:00:54.44,0:00:55.12,Default,,0,0,0,\N,被认可
+Dialogue: 0,0:00:55.12,0:00:56.84,Default,,0,0,0,\N,那是小孩子的行为
+Dialogue: 0,0:00:56.84,0:00:58.12,Default,,0,0,0,\N,也是你不断变得计较
+Dialogue: 0,0:00:58.92,0:00:59.54,Default,,0,0,0,\N,委屈
+Dialogue: 0,0:00:59.76,0:01:00.86,Default,,0,0,0,\N,孤独的原因
+Dialogue: 0,0:01:00.86,0:01:02.24,Default,,0,0,0,\N,成熟的大人
+Dialogue: 0,0:01:02.24,0:01:04.56,Default,,0,0,0,\N,我们永远有能力主动付出爱
+Dialogue: 0,0:01:04.56,0:01:05.78,Default,,0,0,0,\N,付出关心
+Dialogue: 0,0:01:06.04,0:01:06.68,Default,,0,0,0,\N,而爱出者爱返

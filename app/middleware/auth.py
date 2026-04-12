@@ -2,7 +2,7 @@
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 
 from app.auth.database import SessionLocal
 from app.auth.models import User
@@ -59,12 +59,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 finally:
                     db.close()
 
-        # 未认证
+        # 未认证 - API路径返回401 JSON，页面路径重定向到首页
         if not user_id:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "未认证"},
-            )
+            if request.url.path.startswith("/api/"):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "未认证"},
+                )
+            # HTML页面未认证 -> 重定向到首页
+            return RedirectResponse(url="/", status_code=302)
 
         # 填充 user_id 到 request.state
         request.state.user_id = user_id
