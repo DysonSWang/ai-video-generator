@@ -8,6 +8,9 @@ from typing import Optional, List
 from dataclasses import dataclass
 from enum import Enum
 
+_no_proxy_session = requests.Session()
+_no_proxy_session.trust_env = False
+
 BASE_DIR = Path(__file__).parent.parent.parent
 BGM_DIR = BASE_DIR / "assets" / "music"
 
@@ -124,7 +127,7 @@ def ensure_bgm_downloaded(bgm: BGMTrack) -> str:
     # 下载
     if bgm.url:
         print(f">>> 下载BGM: {bgm.name} ({bgm.url})")
-        response = requests.get(bgm.url, stream=True, timeout=60)
+        response = _no_proxy_session.get(bgm.url, stream=True, timeout=60)
         response.raise_for_status()
 
         local_path = bgm.path

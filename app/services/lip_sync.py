@@ -12,6 +12,9 @@ from typing import Optional
 from app.config import KLING_ACCESS_KEY, KLING_SECRET_KEY, KLING_API_BASE
 from app.config import OSS_ACCESS_KEY, OSS_SECRET_KEY, OSS_BUCKET, OSS_ENDPOINT
 
+_no_proxy_session = requests.Session()
+_no_proxy_session.trust_env = False
+
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0
 
@@ -122,7 +125,7 @@ async def generate_lip_sync(
     async def _identify():
         return await loop.run_in_executor(
             None,
-            lambda: requests.post(
+            lambda: _no_proxy_session.post(
                 f"{KLING_API_BASE}/v1/videos/identify-face",
                 headers=headers, json=identify_data, timeout=60
             )
@@ -159,7 +162,7 @@ async def generate_lip_sync(
     async def _create_task():
         return await loop.run_in_executor(
             None,
-            lambda: requests.post(
+            lambda: _no_proxy_session.post(
                 f"{KLING_API_BASE}/v1/videos/advanced-lip-sync",
                 headers=headers, json=lip_sync_data, timeout=60
             )
@@ -181,7 +184,7 @@ async def generate_lip_sync(
     async def _poll():
         return await loop.run_in_executor(
             None,
-            lambda: requests.get(
+            lambda: _no_proxy_session.get(
                 f"{KLING_API_BASE}/v1/videos/advanced-lip-sync/{task_id}",
                 headers=headers, timeout=60
             )
@@ -212,7 +215,7 @@ async def generate_lip_sync(
 
 def _download_file_sync(url: str, output_path: str):
     """同步下载文件"""
-    response = requests.get(url, stream=True, timeout=300)
+    response = _no_proxy_session.get(url, stream=True, timeout=300)
     response.raise_for_status()
     with open(output_path, 'wb') as f:
         for chunk in response.iter_content(chunk_size=8192):

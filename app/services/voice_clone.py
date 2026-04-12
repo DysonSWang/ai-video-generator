@@ -10,6 +10,10 @@ from dataclasses import dataclass
 from typing import Optional
 from app.config import SILICONFLOW_API_KEY, SILICONFLOW_URL, VOICE_CLONE_URL
 
+# 不走系统代理的 session
+_no_proxy_session = requests.Session()
+_no_proxy_session.trust_env = False
+
 MAX_RETRIES = 5
 RETRY_DELAY = 2.0
 
@@ -126,7 +130,7 @@ async def clone_voice(
     async def _clone():
         return await loop.run_in_executor(
             None,
-            lambda: requests.post(VOICE_CLONE_URL, headers=headers, json=payload, timeout=120)
+            lambda: _no_proxy_session.post(VOICE_CLONE_URL, headers=headers, json=payload, timeout=120)
         )
 
     response = await _clone()
@@ -191,7 +195,7 @@ async def synthesize(
         try:
             response = await loop.run_in_executor(
                 None,
-                lambda: requests.post(SILICONFLOW_URL, headers=headers, json=payload, timeout=120)
+                lambda: _no_proxy_session.post(SILICONFLOW_URL, headers=headers, json=payload, timeout=120)
             )
 
             if response.status_code == 200:

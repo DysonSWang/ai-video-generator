@@ -11,6 +11,9 @@ from app.config import (
     MUSETALK_URL, OSS_ACCESS_KEY, OSS_SECRET_KEY, OSS_BUCKET, OSS_ENDPOINT
 )
 
+_no_proxy_session = requests.Session()
+_no_proxy_session.trust_env = False
+
 MAX_RETRIES = 3
 RETRY_DELAY = 2.0
 
@@ -81,7 +84,7 @@ async def musetalk_lip_sync(
 
     # 1. 上传视频
     with open(video_path, 'rb') as f:
-        resp = requests.post(
+        resp = _no_proxy_session.post(
             f"{MUSETALK_URL}/gradio_api/upload",
             files={"files": f},
             timeout=60
@@ -92,7 +95,7 @@ async def musetalk_lip_sync(
 
     # 2. 上传音频
     with open(audio_path, 'rb') as f:
-        resp = requests.post(
+        resp = _no_proxy_session.post(
             f"{MUSETALK_URL}/gradio_api/upload",
             files={"files": f},
             timeout=60
@@ -115,7 +118,7 @@ async def musetalk_lip_sync(
         ]
     }
 
-    resp = requests.post(
+    resp = _no_proxy_session.post(
         f"{MUSETALK_URL}/gradio_api/call/inference",
         json=inference_data,
         timeout=30
@@ -138,7 +141,7 @@ async def musetalk_lip_sync(
         await asyncio.sleep(poll_interval)
 
         try:
-            resp = requests.get(
+            resp = _no_proxy_session.get(
                 f"{MUSETALK_URL}/gradio_api/call/inference/{event_id}",
                 timeout=30
             )

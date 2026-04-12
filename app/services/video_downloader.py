@@ -10,6 +10,9 @@ from dataclasses import dataclass
 from typing import Optional
 from playwright.sync_api import sync_playwright, Playwright
 
+_no_proxy_session = requests.Session()
+_no_proxy_session.trust_env = False
+
 # CDP配置
 CDP_PORT = 9223
 OUTPUT_DIR = Path(__file__).parent.parent.parent / "assets" / "videos"
@@ -235,7 +238,7 @@ class VideoDownloader:
                     'Referer': 'https://www.douyin.com/'
                 }
 
-                response = requests.get(video_url, headers=headers, stream=True, timeout=300)
+                response = _no_proxy_session.get(video_url, headers=headers, stream=True, timeout=300)
                 if not response.ok:
                     raise ValueError(f"下载失败: {response.status_code}")
 

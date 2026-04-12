@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from typing import Optional
 from app.config import QWEN_API_KEY, QWEN_API_URL, QWEN_MODEL
 
+_no_proxy_session = requests.Session()
+_no_proxy_session.trust_env = False
+
 @dataclass
 class RewriteOptions:
     style: str = "口语化"           # 改写风格
@@ -63,7 +66,7 @@ async def rewrite(
         try:
             response = await loop.run_in_executor(
                 None,
-                lambda: requests.post(QWEN_API_URL, headers=headers, json=payload, timeout=60)
+                lambda: _no_proxy_session.post(QWEN_API_URL, headers=headers, json=payload, timeout=60)
             )
 
             if response.status_code == 200:
