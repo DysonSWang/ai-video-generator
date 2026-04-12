@@ -26,6 +26,17 @@ OSS_SECRET_KEY = os.getenv("OSS_SECRET_KEY", "TkmMeBbOzRRQXzc0Uy6HDctxkP9wBJ")
 OSS_BUCKET = "annsight-images"
 OSS_ENDPOINT = "oss-cn-shenzhen.aliyuncs.com"
 
+# ============== JWT配置 ==============
+
+# JWT_SECRET 必须从环境变量读取，无默认值
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    raise ValueError("JWT_SECRET environment variable is required")
+
+JWT_ALGORITHM = "HS256"
+TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "1440"))  # 默认24小时
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
+
 # ============== 其他配置 ==============
 
 # Whisper模型

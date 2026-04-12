@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台 - AI口播视频生成</title>
+    <link href="/static/tailwind.min.css" rel="stylesheet">
+    <script src="/static/lucide.min.js"></script>
+    <style>
+        :root {
+            --color-primary: #E11D48;
+            --color-primary-dark: #BE123C;
+            --color-bg: #0F0F23;
+            --color-surface: rgba(255, 255, 255, 0.08);
+            --color-surface-hover: rgba(255, 255, 255, 0.12);
+            --color-border: rgba(255, 255, 255, 0.12);
+            --color-border-hover: rgba(255, 255, 255, 0.2);
+            --color-text: #F8FAFC;
+            --color-text-muted: #94A3B8;
+            --font-main: 'Plus Jakarta Sans', sans-serif;
+            --radius-sm: 0.5rem;
+            --radius-md: 0.75rem;
+            --radius-lg: 1rem;
+        }
+        * { font-family: var(--font-main); box-sizing: border-box; }
+        body { background: var(--color-bg); }
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .glass-card {
+            background: var(--color-surface);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+        .glass-card:hover {
+            background: var(--color-surface-hover);
+            border-color: var(--color-border-hover);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            border-radius: var(--radius-lg);
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 25px rgba(225, 29, 72, 0.4);
+        }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .input-field {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 0.75rem;
+            padding: 0.625rem 1rem;
+            color: white;
+            width: 100%;
+        }
+        .input-field:focus { outline: none; border-color: var(--color-primary); }
+        .table-row:hover { background: rgba(255,255,255,0.04); }
+        .badge { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+        .badge-active { background: rgba(34,197,94,0.2); color: #22c55e; }
+        .badge-suspended { background: rgba(239,68,68,0.2); color: #ef4444; }
+        .tab-btn { padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.875rem; transition: all 0.2s; cursor: pointer; }
+        .tab-btn.active { background: rgba(225,29,72,0.2); color: #E11D48; }
+        .tab-btn:hover:not(.active) { background: rgba(255,255,255,0.05); }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center; z-index: 100;
+        }
+    </style>
+</head>
+<body class="text-white min-h-screen">
+    <div class="flex min-h-screen">
+        <!-- 侧边导航 -->
+        <aside class="w-64 glass border-r border-white/10 flex flex-col">
+            <div class="p-6 border-b border-white/10">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center">
+                        <i data-lucide="shield" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold">管理后台</div>
+                        <div class="text-xs text-gray-400" id="adminUsername">—</div>
+                    </div>
+                </div>
+            </div>
+            <nav class="flex-1 p-4 space-y-1">
+                <button onclick="showTab('users')" class="tab-btn active w-full text-left flex items-center gap-3" id="tab-users">
+                    <i data-lucide="users" class="w-4 h-4"></i> 用户管理
+                </button>
+                <button onclick="showTab('usage')" class="tab-btn w-full text-left flex items-center gap-3" id="tab-usage">
+                    <i data-lucide="bar-chart-2" class="w-4 h-4"></i> 用量查看
+                </button>
+                <button onclick="showTab('balance')" class="tab-btn w-full text-left flex items-center gap-3" id="tab-balance">
+                    <i data-lucide="wallet" class="w-4 h-4"></i> 余额管理
+                </button>
+            </nav>
+            <div class="p-4 border-t border-white/10">
+                <button onclick="logout()" class="w-full flex items-center gap-3 px-4 py-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 transition-colors">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                    <span class="text-sm">退出登录</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="flex-1 p-8 overflow-auto">
+            <!-- 用户管理 -->
+            <div id="panel-users" class="fade-in">
+                <div class="flex items-center justify-between mb-6">
+                    <h1 class="text-2xl font-bold">用户管理</h1>
+                    <button onclick="openCreateUser()" class="btn-primary px-5 py-2.5 text-sm font-medium flex items-center gap-2">
+                        <i data-lucide="user-plus" class="w-4 h-4"></i> 创建用户
+                    </button>
+                </div>
+
+                <!-- 搜索框 -->
+                <div class="mb-4 flex gap-3">
+                    <input type="text" id="searchInput" placeholder="搜索用户名或昵称..." class="input-field max-w-xs" oninput="debounceSearch()">
+                    <button onclick="searchUsers()" class="btn-primary px-4 py-2 text-sm">搜索</button>
+                </div>
+
+                <!-- 用户列表 -->
+                <div class="glass-card overflow-hidden">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="border-b border-white/10 text-left text-sm text-gray-400">
+                                <th class="px-6 py-4 font-medium">用户名</th>
+                                <th class="px-6 py-4 font-medium">昵称</th>
+                                <th class="px-6 py-4 font-medium">余额</th>
+                                <th class="px-6 py-4 font-medium">状态</th>
+                                <th class="px-6 py-4 font-medium">注册时间</th>
+                                <th class="px-6 py-4 font-medium">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <tr><td colspan="6" class="px-6 py-8 text-center text-gray-500">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4 flex items-center justify-between">
+                    <span class="text-sm text-gray-400" id="paginationInfo">共 0 条</span>
+                    <div class="flex gap-2">
+                        <button onclick="prevPage()" class="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-sm" id="prevBtn">上一页</button>
+                        <button onclick="nextPage()" class="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-sm" id="nextBtn">下一页</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 用量查看 -->
+            <div id="panel-usage" class="fade-in hidden">
+                <h1 class="text-2xl font-bold mb-6">用量查看</h1>
+                <div class="mb-4 flex gap-3 items-center">
+                    <select id="usageUserSelect" class="input-field max-w-xs" onchange="loadUserUsage()">
+                        <option value="">选择用户...</option>
+                    </select>
+                    <select id="usageMonthSelect" class="input-field w-40">
+                        <!--动态填充-->
+                    </select>
+                    <button onclick="loadUserUsage()" class="btn-primary px-4 py-2 text-sm">查询</button>
+                </div>
+                <div class="grid grid-cols-2 gap-6 mb-6">
+                    <div class="glass-card p-6">
+                        <div class="text-gray-400 text-sm mb-2">本月任务数</div>
+                        <div class="text-3xl font-bold" id="usageTaskCount">—</div>
+                    </div>
+                    <div class="glass-card p-6">
+                        <div class="text-gray-400 text-sm mb-2">本月视频总时长</div>
+                        <div class="text-3xl font-bold" id="usageVideoDuration">—</div>
+                        <div class="text-sm text-gray-400 mt-1" id="usageVideoDurationFmt">—</div>
+                    </div>
+                </div>
+                <div class="glass-card p-6">
+                    <h3 class="font-semibold mb-4">历史用量</h3>
+                    <div id="usageHistoryTable" class="space-y-2">
+                        <div class="text-gray-500 text-center py-4">选择用户后查看</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 余额管理 -->
+            <div id="panel-balance" class="fade-in hidden">
+                <h1 class="text-2xl font-bold mb-6">余额管理</h1>
+                <div class="mb-4 flex gap-3 items-center">
+                    <select id="balanceUserSelect" class="input-field max-w-xs" onchange="loadUserBalance()">
+                        <option value="">选择用户...</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-6 mb-6">
+                    <div class="glass-card p-6">
+                        <div class="text-gray-400 text-sm mb-2">当前余额</div>
+                        <div class="text-3xl font-bold" id="balanceAmount">—</div>
+                    </div>
+                </div>
+                <div class="glass-card p-6 mb-6">
+                    <h3 class="font-semibold mb-4">调整余额</h3>
+                    <div class="flex gap-3 items-end">
+                        <div>
+                            <label class="text-sm text-gray-400 mb-1 block">调整金额（元）</label>
+                            <input type="number" id="balanceAdjustAmount" class="input-field w-40" placeholder="+100 或 -50">
+                        </div>
+                        <div class="flex-1">
+                            <label class="text-sm text-gray-400 mb-1 block">备注</label>
+                            <input type="text" id="balanceAdjustDesc" class="input-field" placeholder="调整原因">
+                        </div>
+                        <button onclick="adjustBalance()" class="btn-primary px-5 py-2.5 text-sm">确认调整</button>
+                    </div>
+                </div>
+                <div class="glass-card p-6">
+                    <h3 class="font-semibold mb-4">余额变动记录</h3>
+                    <div id="balanceTransactionsTable">
+                        <div class="text-gray-500 text-center py-4">选择用户后查看</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 创建用户弹窗 -->
+    <div id="createUserModal" class="modal-overlay hidden">
+        <div class="glass-card p-8 w-full max-w-md">
+            <h2 class="text-xl font-bold mb-6">创建用户</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">用户名</label>
+                    <input type="text" id="newUsername" class="input-field" placeholder="登录用户名">
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">昵称</label>
+                    <input type="text" id="newNickname" class="input-field" placeholder="显示昵称（可选）">
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">密码</label>
+                    <input type="password" id="newPassword" class="input-field" placeholder="初始密码">
+                </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button onclick="closeCreateUser()" class="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 transition-colors">取消</button>
+                <button onclick="createUser()" class="flex-1 btn-primary py-2.5">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 用户详情弹窗 -->
+    <div id="userDetailModal" class="modal-overlay hidden">
+        <div class="glass-card p-8 w-full max-w-lg">
+            <h2 class="text-xl font-bold mb-6">用户详情</h2>
+            <div id="userDetailContent" class="space-y-3 text-sm">
+                <!--动态填充-->
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button onclick="closeUserDetail()" class="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 transition-colors">关闭</button>
+                <button onclick="toggleUserStatus()" class="flex-1 btn-primary py-2.5" id="toggleStatusBtn">切换状态</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== 状态 =====
+        let currentPage = 0;
+        let pageSize = 20;
+        let currentSearch = '';
+        let selectedUserId = null;
+        let selectedUserStatus = 'active';
+        let accessToken = localStorage.getItem('access_token');
+
+        // ===== 初始化 =====
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            checkAuth();
+        });
+
+        async function checkAuth() {
+            if (!accessToken) { logout(); return; }
+            try {
+                const res = await fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + accessToken } });
+                if (!res.ok) { logout(); return; }
+                const me = await res.json();
+                if (!me.is_admin) { alert('需要管理员权限'); logout(); return; }
+                document.getElementById('adminUsername').textContent = me.username;
+                loadUsers();
+                loadUserSelects();
+            } catch(e) { logout(); }
+        }
+
+        function logout() {
+            localStorage.removeItem('access_token');
+            window.location.href = '/';
+        }
+
+        // ===== 标签页 =====
+        function showTab(tab) {
+            ['users','usage','balance'].forEach(t => {
+                document.getElementById('panel-' + t).classList.add('hidden');
+                document.getElementById('tab-' + t).classList.remove('active');
+            });
+            document.getElementById('panel-' + tab).classList.remove('hidden');
+            document.getElementById('tab-' + tab).classList.add('active');
+            lucide.createIcons();
+        }
+
+        // ===== 用户列表 =====
+        async function loadUsers() {
+            const params = new URLSearchParams({ skip: currentPage * pageSize, limit: pageSize });
+            if (currentSearch) params.set('search', currentSearch);
+            try {
+                const res = await fetch('/api/users?' + params, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+                if (res.status === 401 || res.status === 403) { logout(); return; }
+                const users = await res.json();
+                renderUsers(users);
+                document.getElementById('paginationInfo').textContent = `第 ${currentPage + 1} 页`;
+            } catch(e) { console.error(e); }
+        }
+
+        function renderUsers(users) {
+            const tbody = document.getElementById('usersTableBody');
+            if (!users.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-gray-500">暂无数据</td></tr>';
+                return;
+            }
+            tbody.innerHTML = users.map(u => `
+                <tr class="table-row border-b border-white/5 cursor-pointer" onclick="openUserDetail('${u.id}')">
+                    <td class="px-6 py-4 font-medium">${escapeHtml(u.username)}</td>
+                    <td class="px-6 py-4 text-gray-400">${escapeHtml(u.nickname || '—')}</td>
+                    <td class="px-6 py-4">${u.balance.toFixed(2)} 元</td>
+                    <td class="px-6 py-4">
+                        <span class="badge ${u.status === 'active' ? 'badge-active' : 'badge-suspended'}">${u.status === 'active' ? '正常' : '已禁用'}</span>
+                    </td>
+                    <td class="px-6 py-4 text-gray-400 text-sm">${new Date(u.created_at).toLocaleString('zh-CN')}</td>
+                    <td class="px-6 py-4">
+                        <button class="text-rose-400 hover:text-rose-300 text-sm" onclick="event.stopPropagation(); openUserDetail('${u.id}')">查看</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function searchUsers() {
+            currentSearch = document.getElementById('searchInput').value;
+            currentPage = 0;
+            loadUsers();
+        }
+
+        let searchTimer = null;
+        function debounceSearch() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(searchUsers, 400);
+        }
+
+        function prevPage() { if (currentPage > 0) { currentPage--; loadUsers(); } }
+        function nextPage() { currentPage++; loadUsers(); }
+
+        // ===== 创建用户 =====
+        function openCreateUser() { document.getElementById('createUserModal').classList.remove('hidden'); }
+        function closeCreateUser() { document.getElementById('createUserModal').classList.add('hidden'); }
+
+        async function createUser() {
+            const username = document.getElementById('newUsername').value.trim();
+            const nickname = document.getElementById('newNickname').value.trim();
+            const password = document.getElementById('newPassword').value;
+            if (!username || !password) { alert('用户名和密码必填'); return; }
+            try {
+                const res = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+                    body: JSON.stringify({ username, password, nickname })
+                });
+                const data = await res.json();
+                if (!res.ok) { alert(data.detail || '创建失败'); return; }
+                closeCreateUser();
+                document.getElementById('newUsername').value = '';
+                document.getElementById('newNickname').value = '';
+                document.getElementById('newPassword').value = '';
+                loadUsers();
+                loadUserSelects();
+            } catch(e) { alert('创建失败'); }
+        }
+
+        // ===== 用户详情 =====
+        async function openUserDetail(userId) {
+            selectedUserId = userId;
+            try {
+                const res = await fetch('/api/users/' + userId, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+                const u = await res.json();
+                selectedUserStatus = u.status;
+                const content = document.getElementById('userDetailContent');
+                content.innerHTML = `
+                    <div class="flex justify-between py-2 border-b border-white/5"><span class="text-gray-400">用户名</span><span>${escapeHtml(u.username)}</span></div>
+                    <div class="flex justify-between py-2 border-b border-white/5"><span class="text-gray-400">昵称</span><span>${escapeHtml(u.nickname || '—')}</span></div>
+                    <div class="flex justify-between py-2 border-b border-white/5"><span class="text-gray-400">余额</span><span>${u.balance.toFixed(2)} 元</span></div>
+                    <div class="flex justify-between py-2 border-b border-white/5"><span class="text-gray-400">状态</span><span class="badge ${u.status==='active'?'badge-active':'badge-suspended'}">${u.status==='active'?'正常':'已禁用'}</span></div>
+                    <div class="flex justify-between py-2 border-b border-white/5"><span class="text-gray-400">本月任务数</span><span>${u.task_count}</span></div>
+                    <div class="flex justify-between py-2 border-b border-white/5"><span class="text-gray-400">本月视频时长</span><span>${formatDuration(u.video_duration_seconds)}</span></div>
+                    <div class="flex justify-between py-2 border-b border-white/5"><span class="text-gray-400">API Key数量</span><span>${u.api_key_count}</span></div>
+                    <div class="flex justify-between py-2"><span class="text-gray-400">注册时间</span><span>${new Date(u.created_at).toLocaleString('zh-CN')}</span></div>
+                `;
+                document.getElementById('toggleStatusBtn').textContent = u.status === 'active' ? '禁用账户' : '启用账户';
+                document.getElementById('userDetailModal').classList.remove('hidden');
+            } catch(e) { alert('加载失败'); }
+        }
+
+        function closeUserDetail() { document.getElementById('userDetailModal').classList.add('hidden'); }
+
+        async function toggleUserStatus() {
+            const newStatus = selectedUserStatus === 'active' ? 'suspended' : 'active';
+            if (!confirm(newStatus === 'active' ? '确认启用该账户？' : '确认禁用该账户？')) return;
+            try {
+                const res = await fetch('/api/users/' + selectedUserId + '/status', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                if (!res.ok) { alert('操作失败'); return; }
+                closeUserDetail();
+                loadUsers();
+            } catch(e) { alert('操作失败'); }
+        }
+
+        // ===== 用量查看 =====
+        async function loadUserSelects() {
+            try {
+                const res = await fetch('/api/users?limit=100', { headers: { 'Authorization': 'Bearer ' + accessToken } });
+                const users = await res.json();
+                const opts = users.map(u => `<option value="${u.id}">${escapeHtml(u.username)} (${u.nickname || '-'})</option>`).join('');
+                document.getElementById('usageUserSelect').innerHTML = '<option value="">选择用户...</option>' + opts;
+                document.getElementById('balanceUserSelect').innerHTML = '<option value="">选择用户...</option>' + opts;
+                // 填充月份选择器（最近12个月）
+                const months = [];
+                for (let i = 0; i < 12; i++) {
+                    const d = new Date(); d.setMonth(d.getMonth() - i);
+                    months.push(d.toISOString().slice(0,7));
+                }
+                document.getElementById('usageMonthSelect').innerHTML = months.map(m => `<option value="${m}">${m}</option>`).join('');
+            } catch(e) {}
+        }
+
+        async function loadUserUsage() {
+            const userId = document.getElementById('usageUserSelect').value;
+            const month = document.getElementById('usageMonthSelect').value;
+            if (!userId) { alert('请选择用户'); return; }
+            try {
+                const [sumRes, histRes] = await Promise.all([
+                    fetch(`/api/usage/summary?month=${month}`, { headers: { 'Authorization': 'Bearer ' + accessToken } }),
+                    fetch('/api/usage/history?limit=12', { headers: { 'Authorization': 'Bearer ' + accessToken } })
+                ]);
+                const sum = await sumRes.json();
+                const hist = await histRes.json();
+                document.getElementById('usageTaskCount').textContent = sum.task_count ?? 0;
+                const secs = sum.video_duration_seconds ?? 0;
+                document.getElementById('usageVideoDuration').textContent = secs;
+                document.getElementById('usageVideoDurationFmt').textContent = formatDuration(secs);
+
+                const table = document.getElementById('usageHistoryTable');
+                if (!hist.length) {
+                    table.innerHTML = '<div class="text-gray-500 text-center py-4">暂无数据</div>';
+                } else {
+                    table.innerHTML = hist.map(h => `
+                        <div class="flex justify-between py-2 border-b border-white/5 text-sm">
+                            <span>${h.month_key}</span>
+                            <span>任务 ${h.task_count} | 时长 ${formatDuration(h.video_duration_seconds)}</span>
+                        </div>
+                    `).join('');
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        // ===== 余额管理 =====
+        async function loadUserBalance() {
+            const userId = document.getElementById('balanceUserSelect').value;
+            if (!userId) return;
+            try {
+                const [balRes, txRes] = await Promise.all([
+                    fetch('/api/billing/balance', { headers: { 'Authorization': 'Bearer ' + accessToken } }),
+                    fetch('/api/billing/transactions?limit=50', { headers: { 'Authorization': 'Bearer ' + accessToken } })
+                ]);
+                const bal = await balRes.json();
+                const txs = await txRes.json();
+                document.getElementById('balanceAmount').textContent = bal.balance.toFixed(2) + ' 元';
+
+                const table = document.getElementById('balanceTransactionsTable');
+                if (!txs.length) {
+                    table.innerHTML = '<div class="text-gray-500 text-center py-4">暂无记录</div>';
+                } else {
+                    table.innerHTML = txs.map(t => `
+                        <div class="flex justify-between py-2 border-b border-white/5 text-sm">
+                            <span>${t.description || t.transaction_type}</span>
+                            <span class="${t.amount >= 0 ? 'text-green-400' : 'text-red-400'}">${t.amount >= 0 ? '+' : ''}${t.amount.toFixed(2)}</span>
+                            <span class="text-gray-400">${new Date(t.created_at).toLocaleString('zh-CN')}</span>
+                        </div>
+                    `).join('');
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        async function adjustBalance() {
+            const userId = document.getElementById('balanceUserSelect').value;
+            const amount = parseFloat(document.getElementById('balanceAdjustAmount').value);
+            const desc = document.getElementById('balanceAdjustDesc').value.trim();
+            if (!userId) { alert('请选择用户'); return; }
+            if (isNaN(amount)) { alert('请输入有效金额'); return; }
+            try {
+                const res = await fetch('/api/users/' + userId + '/balance', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+                    body: JSON.stringify({ amount, description: desc })
+                });
+                if (!res.ok) { const d = await res.json(); alert(d.detail || '调整失败'); return; }
+                document.getElementById('balanceAdjustAmount').value = '';
+                document.getElementById('balanceAdjustDesc').value = '';
+                loadUserBalance();
+            } catch(e) { alert('调整失败'); }
+        }
+
+        // ===== 工具函数 =====
+        function escapeHtml(s) {
+            if (!s) return '';
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds) return '0秒';
+            const m = Math.floor(seconds / 60);
+            const s = Math.round(seconds % 60);
+            if (m > 60) {
+                const h = Math.floor(m / 60);
+                return `${h}小时${m % 60}分${s}秒`;
+            }
+            return m > 0 ? `${m}分${s}秒` : `${s}秒`;
+        }
+    </script>
+</body>
+</html>

@@ -149,6 +149,22 @@
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
 
+        /* Auth styles */
+        .input-field {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 0.75rem;
+            padding: 0.625rem 1rem;
+            color: white;
+            width: 100%;
+        }
+        .input-field:focus { outline: none; border-color: #E11D48; }
+        .input-field::placeholder { color: rgba(255,255,255,0.3); }
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center; z-index: 100;
+        }
+
         /* Provider toggle buttons */
         .provider-btn {
             display: flex;
@@ -331,15 +347,56 @@
                 </div>
                 <span class="text-lg font-semibold">AI口播视频</span>
             </div>
-            <div class="flex items-center gap-6">
-                <a href="#features" class="text-sm text-gray-400 hover:text-white transition-colors">功能</a>
-                <a href="#how-it-works" class="text-sm text-gray-400 hover:text-white transition-colors">如何使用</a>
-                <button onclick="scrollToGenerate()" class="btn-primary px-5 py-2 rounded-xl text-sm font-medium">
-                    开始创作
-                </button>
+            <div class="flex items-center gap-6" id="navAuth">
+                <!-- 未登录状态 -->
+                <div id="navGuest" class="flex items-center gap-4">
+                    <a href="#features" class="text-sm text-gray-400 hover:text-white transition-colors">功能</a>
+                    <a href="#how-it-works" class="text-sm text-gray-400 hover:text-white transition-colors">如何使用</a>
+                    <button onclick="openLoginModal()" class="btn-primary px-5 py-2 rounded-xl text-sm font-medium">
+                        开始创作
+                    </button>
+                </div>
+                <!-- 已登录状态 -->
+                <div id="navUser" class="hidden items-center gap-4">
+                    <a href="/admin" class="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1">
+                        <i data-lucide="settings" class="w-4 h-4"></i> 管理后台
+                    </a>
+                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10">
+                        <span class="text-sm" id="navUsername">—</span>
+                        <span class="text-xs text-gray-400" id="navBalance">余额: —</span>
+                    </div>
+                    <button onclick="logout()" class="text-sm text-gray-400 hover:text-white">退出</button>
+                </div>
             </div>
         </div>
     </nav>
+
+    <!-- 登录Modal -->
+    <div id="loginModal" class="modal-overlay hidden">
+        <div class="glass-card p-8 w-full max-w-md">
+            <h2 class="text-xl font-bold mb-6 text-center">登录账户</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">用户名</label>
+                    <input type="text" id="loginUsername" class="input-field" placeholder="输入用户名" autocomplete="username">
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">密码</label>
+                    <div class="relative">
+                        <input type="password" id="loginPassword" class="input-field pr-10" placeholder="输入密码" autocomplete="current-password">
+                        <button type="button" onclick="togglePasswordVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
+                            <i data-lucide="eye" class="w-4 h-4" id="eyeIcon"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="loginError" class="mt-3 text-sm text-red-400 text-center hidden"></div>
+            <div class="flex gap-3 mt-6">
+                <button onclick="closeLoginModal()" class="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 transition-colors">取消</button>
+                <button onclick="doLogin()" class="flex-1 btn-primary py-2.5">登录</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Hero Section -->
     <section class="min-h-screen flex items-center justify-center px-4 pt-24 pb-16 relative overflow-hidden">
@@ -955,7 +1012,7 @@
             if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>润色中...'; }
             if (typeof lucide !== 'undefined') lucide.createIcons();
             try {
-                const res = await fetch('/api/polish-text', {
+                const res = await authFetch('/api/polish-text', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text })
@@ -979,7 +1036,7 @@
             if (typeof lucide !== 'undefined') lucide.createIcons();
             try {
                 const style = document.getElementById('rewriteStyle')?.value || '口语化';
-                const res = await fetch('/api/rewrite-text', {
+                const res = await authFetch('/api/rewrite-text', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text, style })
@@ -1025,7 +1082,7 @@
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
             try {
-                const res = await fetch('/api/extract-only', {
+                const res = await authFetch('/api/extract-only', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ url })
@@ -1297,14 +1354,14 @@
                 updateProgress(5, '上传视频文件...');
                 const videoFormData = new FormData();
                 videoFormData.append('file', userVideo.files[0]);
-                const videoRes = await fetch('/api/upload/video', { method: 'POST', body: videoFormData });
+                const videoRes = await authFetch('/api/upload/video', { method: 'POST', body: videoFormData });
                 const videoData = await videoRes.json();
                 const videoId = videoData.video_id;
 
                 updateProgress(15, '上传音频文件...');
                 const audioFormData = new FormData();
                 audioFormData.append('file', userAudio.files[0]);
-                const audioRes = await fetch('/api/upload/audio', { method: 'POST', body: audioFormData });
+                const audioRes = await authFetch('/api/upload/audio', { method: 'POST', body: audioFormData });
                 const audioData = await audioRes.json();
                 const audioId = audioData.audio_id;
 
@@ -1315,7 +1372,7 @@
                     btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>AI处理中...</span>';
                     if (typeof lucide !== 'undefined') lucide.createIcons();
                 }
-                const pipelineRes = await fetch('/api/pipeline/run', {
+                const pipelineRes = await authFetch('/api/pipeline/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1386,7 +1443,7 @@
             const list = document.getElementById('historyList');
             if (!list) return;
             try {
-                const res = await fetch('/api/tasks?limit=20');
+                const res = await authFetch('/api/tasks?limit=20');
                 const tasks = await res.json();
                 if (!tasks || tasks.length === 0) {
                     list.innerHTML = '<div class="text-gray-500 text-sm text-center py-8">暂无历史记录</div>';
@@ -1511,7 +1568,7 @@
 
             const poll = async () => {
                 try {
-                    const res = await fetch(`/api/task/${taskId}`);
+                    const res = await authFetch(`/api/task/${taskId}`);
                     const data = await res.json();
                     const messages = document.getElementById('statusMessages');
 
@@ -1764,7 +1821,7 @@
     function openSubtitleReburn(taskId) {
         subReburnTaskId = taskId;
         // 从历史记录获取文案
-        fetch('/api/tasks?limit=50')
+        authFetch('/api/tasks?limit=50')
             .then(r => r.json())
             .then(tasks => {
                 const task = tasks.find(t => t.task_id === taskId);
@@ -1788,7 +1845,7 @@
         status.classList.remove('hidden');
         status.textContent = '正在重新烧录字幕...';
         try {
-            const res = await fetch(`/api/task/${subReburnTaskId}/reburn-subtitle`, {
+            const res = await authFetch(`/api/task/${subReburnTaskId}/reburn-subtitle`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ subtitle_text: text })
@@ -1843,6 +1900,152 @@
     }
     document.getElementById('videoPreviewModal').addEventListener('click', function(e) {
         if (e.target === this) closeVideoPreview();
+    });
+
+    // ===== Auth =====
+    let accessToken = localStorage.getItem('access_token');
+    let refreshToken = localStorage.getItem('refresh_token');
+
+    // 带认证的fetch封装
+    async function authFetch(url, options = {}) {
+        const headers = { ...options.headers };
+        if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+        const res = await fetch(url, { ...options, headers });
+        if (res.status === 401 && refreshToken) {
+            const refreshed = await refreshAccessToken();
+            if (refreshed) {
+                headers['Authorization'] = 'Bearer ' + accessToken;
+                return fetch(url, { ...options, headers });
+            }
+        }
+        return res;
+    }
+
+    async function checkAuth() {
+        if (!accessToken) { showGuest(); return; }
+        try {
+            const res = await fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + accessToken } });
+            if (res.status === 401) {
+                // 尝试刷新token
+                if (refreshToken) {
+                    const refreshed = await refreshAccessToken();
+                    if (refreshed) {
+                        return checkAuth(); // 重试
+                    }
+                }
+                logout();
+                return;
+            }
+            if (!res.ok) { throw new Error(); }
+            const me = await res.json();
+            showUser(me);
+        } catch(e) {
+            showGuest();
+        }
+    }
+
+    async function refreshAccessToken() {
+        try {
+            const res = await fetch('/api/auth/refresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refresh_token: refreshToken })
+            });
+            if (!res.ok) return false;
+            const data = await res.json();
+            accessToken = data.access_token;
+            localStorage.setItem('access_token', accessToken);
+            return true;
+        } catch(e) { return false; }
+    }
+
+    function showGuest() {
+        document.getElementById('navGuest').classList.remove('hidden');
+        document.getElementById('navUser').classList.add('hidden');
+        document.getElementById('navUser').classList.remove('flex');
+    }
+
+    function showUser(me) {
+        document.getElementById('navGuest').classList.add('hidden');
+        document.getElementById('navUser').classList.remove('hidden');
+        document.getElementById('navUser').classList.add('flex');
+        document.getElementById('navUsername').textContent = me.nickname || me.username;
+        document.getElementById('navBalance').textContent = '余额: ' + me.balance.toFixed(2) + '元';
+    }
+
+    function openLoginModal() {
+        document.getElementById('loginModal').classList.remove('hidden');
+        document.getElementById('loginError').classList.add('hidden');
+        document.getElementById('loginUsername').value = '';
+        document.getElementById('loginPassword').value = '';
+    }
+
+    function closeLoginModal() {
+        document.getElementById('loginModal').classList.add('hidden');
+    }
+
+    async function doLogin() {
+        const username = document.getElementById('loginUsername').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        if (!username || !password) {
+            showLoginError('请输入用户名和密码');
+            return;
+        }
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                showLoginError(data.detail || '登录失败');
+                return;
+            }
+            accessToken = data.access_token;
+            refreshToken = data.refresh_token;
+            localStorage.setItem('access_token', accessToken);
+            localStorage.setItem('refresh_token', refreshToken);
+            closeLoginModal();
+            checkAuth();
+        } catch(e) {
+            showLoginError('网络错误，请重试');
+        }
+    }
+
+    function showLoginError(msg) {
+        const el = document.getElementById('loginError');
+        el.textContent = msg;
+        el.classList.remove('hidden');
+    }
+
+    function logout() {
+        accessToken = null;
+        refreshToken = null;
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        showGuest();
+    }
+
+    function togglePasswordVisibility() {
+        const pwd = document.getElementById('loginPassword');
+        const icon = document.getElementById('eyeIcon');
+        if (pwd.type === 'password') {
+            pwd.type = 'text';
+            icon.setAttribute('data-lucide', 'eye-off');
+        } else {
+            pwd.type = 'password';
+            icon.setAttribute('data-lucide', 'eye');
+        }
+        lucide.createIcons();
+    }
+
+    // 初始化时检查登录状态
+    checkAuth();
+
+    // 页面加载完成后初始化图标
+    document.addEventListener('DOMContentLoaded', () => {
+        lucide.createIcons();
     });
     </script>
 </body>

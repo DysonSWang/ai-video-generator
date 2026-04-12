@@ -4,6 +4,7 @@
 import base64
 import asyncio
 import requests
+import uuid
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
@@ -12,7 +13,7 @@ from app.config import SILICONFLOW_API_KEY, SILICONFLOW_URL, VOICE_CLONE_URL
 MAX_RETRIES = 5
 RETRY_DELAY = 2.0
 
-# 音色缓存
+# 音色缓存（仅用于无数据库时的向后兼容）
 _voice_cache = {}
 
 @dataclass
@@ -30,25 +31,79 @@ def _get_audio_base64(audio_path: str) -> str:
     with open(audio_path, 'rb') as f:
         return base64.b64encode(f.read()).decode()
 
+
+def _get_voice_from_db(db, user_id: str, voice_name: str) -> Optional[dict]:
+    """从数据库获取音色档案"""
+    from app.auth.models import VoiceProfile
+    profile = (
+        db.query(VoiceProfile)
+        .filter(VoiceProfile.user_id == user_id, VoiceProfile.voice_name == voice_name)
+        .first()
+    )
+    return profile
+
+
+def _save_voice_to_db(
+    db, user_id: str, voice_uri: str, voice_name: str,
+    reference_audio: str, reference_text: str
+) -> None:
+    """保存音色档案到数据库"""
+    from app.auth.models import VoiceProfile
+    profile = VoiceProfile(
+        id=str(uuid.uuid4()),
+        user_id=user_id,
+        voice_uri=voice_uri,
+        voice_name=voice_name,
+        reference_audio=reference_audio,
+        reference_text=reference_text,
+        usage_count=0,
+    )
+    db.add(profile)
+    db.commit()
+    print(f">>> 音色档案已保存: {voice_name}")
+
+
+def _increment_voice_usage(db, user_id: str, voice_name: str) -> None:
+    """增加音色使用次数"""
+    from app.auth.models import VoiceProfile
+    profile = (
+        db.query(VoiceProfile)
+        .filter(VoiceProfile.user_id == user_id, VoiceProfile.voice_name == voice_name)
+        .first()
+    )
+    if profile:
+        profile.usage_count += 1
+        db.commit()
+
+
 async def clone_voice(
     audio_path: str,
     voice_name: str = "my_voice",
-    reference_text: str = "这是参考语音。"
+    reference_text: str = "这是参考语音。",
+    db=None,
+    user_id: Optional[str] = None,
 ) -> VoiceCloneResult:
-    """克隆用户声音
+    """克隆用户声音（优先从数据库读取，已克隆则直接返回）
 
     Args:
         audio_path: 参考音频文件路径 (10-20秒)
         voice_name: 音色名称标识
         reference_text: 参考文本
-
-    Returns:
-        VoiceCloneResult: 包含voice_uri
+        db: SQLAlchemy数据库会话（可选，无数据库时用内存缓存）
+        user_id: 用户ID（数据库模式必需）
     """
-    # 检查缓存
-    if voice_name in _voice_cache:
-        print(f">>> 使用缓存音色: {voice_name}")
-        return _voice_cache[voice_name]
+    # 数据库模式：优先从数据库查询
+    if db is not None and user_id is not None:
+        profile = _get_voice_from_db(db, user_id, voice_name)
+        if profile:
+            print(f">>> 使用数据库音色: {voice_name} (使用次数: {profile.usage_count})")
+            _increment_voice_usage(db, user_id, voice_name)
+            return VoiceCloneResult(voice_uri=profile.voice_uri, voice_name=voice_name)
+    else:
+        # 内存缓存模式（向后兼容）
+        if voice_name in _voice_cache:
+            print(f">>> 使用缓存音色: {voice_name}")
+            return _voice_cache[voice_name]
 
     # 读取音频并转为base64
     audio_data = _get_audio_base64(audio_path)
@@ -83,10 +138,16 @@ async def clone_voice(
     voice_uri = result.get('uri')
 
     voice_result = VoiceCloneResult(voice_uri=voice_uri, voice_name=voice_name)
-    _voice_cache[voice_name] = voice_result
+
+    # 保存到数据库
+    if db is not None and user_id is not None:
+        _save_voice_to_db(db, user_id, voice_uri, voice_name, audio_path, reference_text)
+    else:
+        _voice_cache[voice_name] = voice_result
 
     print(f">>> 音色克隆成功: {voice_uri}")
     return voice_result
+
 
 async def synthesize(
     text: str,
@@ -163,25 +224,32 @@ async def synthesize(
     print(f">>> TTS合成成功: {output_path} ({duration:.1f}s)")
     return SynthesisResult(audio_path=output_path, duration=duration)
 
+
 async def clone_and_synthesize(
     reference_audio: str,
     text: str,
     voice_name: str = "my_voice",
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
+    db=None,
+    user_id: Optional[str] = None,
 ) -> SynthesisResult:
-    """一键：克隆音色并合成
+    """一键：克隆音色并合成（支持数据库持久化）
 
     Args:
         reference_audio: 参考音频路径
         text: 要合成的文本
         voice_name: 音色名称
         output_path: 输出音频路径（不传则用默认路径）
+        db: SQLAlchemy数据库会话
+        user_id: 用户ID
 
     Returns:
         SynthesisResult: 包含音频路径和时长
     """
     # 1. 克隆音色
-    clone_result = await clone_voice(reference_audio, voice_name)
+    clone_result = await clone_voice(
+        reference_audio, voice_name, db=db, user_id=user_id
+    )
 
     # 2. 合成语音
     return await synthesize(text, clone_result.voice_uri, output_path=output_path)
