@@ -358,7 +358,7 @@
                 </div>
                 <!-- 已登录状态 -->
                 <div id="navUser" class="hidden items-center gap-4">
-                    <a href="/admin" class="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1">
+                    <a href="#" onclick="goAdmin()" class="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1">
                         <i data-lucide="settings" class="w-4 h-4"></i> 管理后台
                     </a>
                     <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10">
@@ -1982,6 +1982,8 @@
 
     function closeLoginModal() {
         document.getElementById('loginModal').classList.add('hidden');
+        document.getElementById('loginError').classList.add('hidden');
+        document.getElementById('loginError').textContent = '';
     }
 
     async function doLogin() {
@@ -2006,6 +2008,7 @@
             refreshToken = data.refresh_token;
             localStorage.setItem('access_token', accessToken);
             localStorage.setItem('refresh_token', refreshToken);
+            hideLoginError();
             closeLoginModal();
             checkAuth();
         } catch(e) {
@@ -2013,10 +2016,25 @@
         }
     }
 
+    function hideLoginError() {
+        const el = document.getElementById('loginError');
+        el.textContent = '';
+        el.classList.add('hidden');
+    }
+
     function showLoginError(msg) {
         const el = document.getElementById('loginError');
         el.textContent = msg;
         el.classList.remove('hidden');
+    }
+
+    function goAdmin() {
+        const token = localStorage.getItem('access_token');
+        if (token) {
+            window.location.href = '/admin?token=' + encodeURIComponent(token);
+        } else {
+            openLoginModal();
+        }
     }
 
     function logout() {

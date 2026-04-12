@@ -379,6 +379,7 @@ async def health():
 
 @app.get("/admin")
 async def admin_page(
+    request: Request,
     user: AuthUser = Depends(get_current_user),
 ):
     """渲染Admin后台页面（需管理员权限）"""

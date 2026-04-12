@@ -272,7 +272,15 @@
         let selectedUserStatus = 'active';
         let accessToken = localStorage.getItem('access_token');
 
-        // ===== 初始化 =====
+        // 如果 URL 中有 token 参数，存入 localStorage 并清理 URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const tokenFromUrl = urlParams.get('token');
+        if (tokenFromUrl) {
+            accessToken = tokenFromUrl;
+            localStorage.setItem('access_token', tokenFromUrl);
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
             checkAuth();
