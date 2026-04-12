@@ -59,6 +59,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 finally:
                     db.close()
 
+        # 3. 尝试 URL query token（用于 admin 页面 full-page 导航）
+        if not user_id:
+            query_token = request.query_params.get("token")
+            if query_token:
+                payload = auth_service.verify_jwt_token(query_token)
+                if payload and payload.get("type") == "access":
+                    user_id = payload.get("sub")
+
         # 未认证 - API路径返回401 JSON，页面路径重定向到首页
         if not user_id:
             if request.url.path.startswith("/api/"):
