@@ -476,7 +476,10 @@ async def extract_only(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/polish-text")
-async def polish_text(request: PolishTextRequest):
+async def polish_text(
+    request: PolishTextRequest,
+    user: AuthUser = Depends(get_current_user),
+):
     """AI润色转录稿：修正识别错误、补全缺失"""
     try:
         polished = await polish(request.text)
@@ -485,7 +488,10 @@ async def polish_text(request: PolishTextRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/rewrite-text")
-async def rewrite_text(request: RewriteTextRequest):
+async def rewrite_text(
+    request: RewriteTextRequest,
+    user: AuthUser = Depends(get_current_user),
+):
     """AI改写文案"""
     try:
         rewritten = await rewrite(request.text, request.style)
