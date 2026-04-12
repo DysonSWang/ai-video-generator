@@ -754,10 +754,36 @@
                     <div class="upload-zone p-6 rounded-lg text-center cursor-pointer" onclick="document.getElementById('userAudio').click()">
                         <input type="file" id="userAudio" accept="audio/*" class="hidden" onchange="handleFileSelect(this, 'userAudioPreview')">
                         <div id="userAudioPreview">
-                            <i data-lucide="music" class="w-10 h-10 mx-auto mb-3 text-gray-500 icon"></i>
+                            <i data-lucide="music" class="w-10 w-10 mx-auto mb-3 text-gray-500 icon"></i>
                             <p class="text-gray-400">点击或拖拽上传音频</p>
                             <p class="text-xs text-gray-500 mt-2">建议时长 10-20 秒</p>
                         </div>
+                    </div>
+                    <!-- 音色选择 -->
+                    <div class="mt-3">
+                        <label class="block text-xs text-gray-400 mb-2">音色选择</label>
+                        <div class="relative">
+                            <button type="button" id="voiceSelectBtn" onclick="toggleVoiceDropdown()" class="w-full bg-gray-800/60 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm text-left flex items-center justify-between">
+                                <span id="voiceSelectLabel">使用上传音频克隆（默认）</span>
+                                <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400"></i>
+                            </button>
+                            <div id="voiceDropdown" class="hidden absolute z-50 mt-1 w-full bg-gray-800 border border-gray-600 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                                <div class="py-1">
+                                    <div onclick="selectVoice('custom', '使用上传音频克隆（默认）')" class="px-3 py-2 text-white text-sm cursor-pointer hover:bg-gray-700">使用上传音频克隆（默认）</div>
+                                    <div class="px-3 py-1 text-xs text-gray-500 border-t border-gray-700 mt-1">🎙️ 预设音色</div>
+                                    <div onclick="selectVoice('liangzi', '预设音色 - 亮子')" class="px-3 py-2 text-white text-sm cursor-pointer hover:bg-gray-700">🎙️ 预设音色 - 亮子</div>
+                                    <div onclick="selectVoice('sichuanfenda', '预设音色 - 四川分答')" class="px-3 py-2 text-white text-sm cursor-pointer hover:bg-gray-700">🎙️ 预设音色 - 四川分答</div>
+                                    <div id="voiceDropdownUser" class="hidden">
+                                        <div class="px-3 py-1 text-xs text-gray-500 border-t border-gray-700 mt-1">🎤 已保存音色</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <select id="voiceSelect" class="hidden">
+                            <option value="custom">使用上传音频克隆（默认）</option>
+                            <option value="liangzi">🎙️ 预设音色 - 亮子</option>
+                            <option value="sichuanfenda">🎙️ 预设音色 - 四川分答</option>
+                        </select>
                     </div>
                 </div>
 
@@ -1130,7 +1156,7 @@
                 if (data.video_url) {
                     const videoPlayer = document.getElementById('videoPreviewPlayer');
                     const videoContainer = document.getElementById('videoPreviewContainer');
-                    videoPlayer.src = data.video_url;
+                    videoPlayer.src = data.video_url + (data.video_url.includes('?') ? '&' : '?') + 'token=' + (accessToken || '');
                     videoContainer.classList.remove('hidden');
                 }
 
@@ -1325,6 +1351,13 @@
 
         // Start generation
         async function startGeneration() {
+            // 未登录 → 弹出登录框
+            if (!accessToken) {
+                openLoginModal();
+                showLoginError('请先登录后再操作');
+                return;
+            }
+
             const videoLink = document.getElementById('videoLink');
             const userVideo = document.getElementById('userVideo');
             const userAudio = document.getElementById('userAudio');
@@ -1377,6 +1410,12 @@
                 const videoFormData = new FormData();
                 videoFormData.append('file', userVideo.files[0]);
                 const videoRes = await authFetch('/api/upload/video', { method: 'POST', body: videoFormData });
+                if (videoRes.status === 401) {
+                    resetGenerateBtn(btn);
+                    openLoginModal();
+                    showLoginError('请先登录后再操作');
+                    return;
+                }
                 const videoData = await videoRes.json();
                 const videoId = videoData.video_id;
 
@@ -1384,6 +1423,12 @@
                 const audioFormData = new FormData();
                 audioFormData.append('file', userAudio.files[0]);
                 const audioRes = await authFetch('/api/upload/audio', { method: 'POST', body: audioFormData });
+                if (audioRes.status === 401) {
+                    resetGenerateBtn(btn);
+                    openLoginModal();
+                    showLoginError('请先登录后再操作');
+                    return;
+                }
                 const audioData = await audioRes.json();
                 const audioId = audioData.audio_id;
 
@@ -1406,6 +1451,7 @@
                         extracted_segments: savedData?.segments,
                         video_duration: savedData?.duration,
                         options: {
+                            tts_voice: document.getElementById('voiceSelect')?.value || 'custom',
                             rewrite_style: rewriteStyle?.value || '口语化',
                             lip_sync_provider: lipSyncProvider?.value || 'infinite_talk',
                             add_subtitle: addSubtitle?.checked ?? true,
@@ -1414,6 +1460,12 @@
                         }
                     })
                 });
+                if (pipelineRes.status === 401) {
+                    resetGenerateBtn(btn);
+                    openLoginModal();
+                    showLoginError('请先登录后再操作');
+                    return;
+                }
                 const pipelineData = await pipelineRes.json();
                 const taskId = pipelineData.task_id;
 
@@ -1422,11 +1474,7 @@
             } catch (error) {
                 console.error('Error:', error);
                 showErrorModal('生成失败: ' + error.message);
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
-                    lucide.createIcons();
-                }
+                resetGenerateBtn(btn);
                 if (progressSection) progressSection.classList.add('hidden');
             }
         }
@@ -1540,7 +1588,8 @@
         }
 
         function downloadFromHistory(taskId) {
-            window.open(`/api/result/${taskId}`, '_blank');
+            const token = accessToken || '';
+            window.open(`/api/result/${taskId}?token=${token}`, '_blank');
         }
 
         function toggleHistoryDetail(taskId) {
@@ -1664,7 +1713,7 @@
                             if (fvp && data.result.video_path) {
                                 // /home/admin/ai-video-generator/assets/... -> /assets/...
                                 const absPath = data.result.video_path;
-                                const vp = absPath.replace('/home/admin/ai-video-generator', '');
+                                const vp = absPath.replace('/home/admin/ai-video-generator', '') + '?token=' + (accessToken || '');
                                 fvp.src = vp;
                             }
                         }
@@ -1911,8 +1960,8 @@
         const modal = document.getElementById('videoPreviewModal');
         const player = document.getElementById('videoPreviewPlayerModal');
         if (!modal || !player) return;
-        // Use /api/result endpoint for proper MIME type and caching
-        player.src = `/api/result/${taskId}`;
+        const token = accessToken || '';
+        player.src = `/api/result/${taskId}?token=${token}`;
         player.load();
         modal.style.display = 'flex';
     }
@@ -1995,7 +2044,60 @@
         document.getElementById('navUser').classList.add('flex');
         document.getElementById('navUsername').textContent = me.nickname || me.username;
         document.getElementById('navBalance').textContent = '余额: ' + me.balance.toFixed(2) + '元';
+        loadUserVoices();
     }
+
+    async function loadUserVoices() {
+        const userDropdown = document.getElementById('voiceDropdownUser');
+        if (!userDropdown) return;
+        userDropdown.classList.add('hidden');
+        userDropdown.querySelectorAll('.user-voice-item').forEach(el => el.remove());
+
+        try {
+            const res = await authFetch('/api/voices');
+            if (!res.ok) return;
+            const voices = await res.json();
+            if (!voices || voices.length === 0) return;
+
+            userDropdown.classList.remove('hidden');
+            const container = userDropdown.querySelector('.border-t');
+            voices.forEach(v => {
+                const div = document.createElement('div');
+                div.className = 'px-3 py-2 text-white text-sm cursor-pointer hover:bg-gray-700 user-voice-item';
+                div.textContent = '🎤 ' + v.voice_name + '（已保存）';
+                div.onclick = () => selectVoice(v.id, '🎤 ' + v.voice_name + '（已保存）');
+                container.before(div);
+            });
+        } catch(e) {
+            // 忽略，用户音色加载失败不影响流程
+        }
+    }
+
+    let currentVoiceValue = 'custom';
+    function selectVoice(value, label) {
+        currentVoiceValue = value;
+        const btn = document.getElementById('voiceSelectBtn');
+        const labelEl = document.getElementById('voiceSelectLabel');
+        if (labelEl) labelEl.textContent = label;
+        const hiddenSelect = document.getElementById('voiceSelect');
+        if (hiddenSelect) hiddenSelect.value = value;
+        toggleVoiceDropdown();
+    }
+
+    function toggleVoiceDropdown() {
+        const dropdown = document.getElementById('voiceDropdown');
+        if (!dropdown) return;
+        dropdown.classList.toggle('hidden');
+    }
+
+    // 点击外部关闭下拉
+    document.addEventListener('click', function(e) {
+        const dropdown = document.getElementById('voiceDropdown');
+        const btn = document.getElementById('voiceSelectBtn');
+        if (dropdown && !dropdown.contains(e.target) && !btn.contains(e.target)) {
+            dropdown.classList.add('hidden');
+        }
+    });
 
     function openLoginModal() {
         document.getElementById('loginModal').classList.remove('hidden');
@@ -2050,6 +2152,17 @@
         const el = document.getElementById('loginError');
         el.textContent = msg;
         el.classList.remove('hidden');
+    }
+
+    function resetGenerateBtn(btn) {
+        if (!btn) btn = document.getElementById('generateBtn');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i><span>开始生成</span>';
+            lucide.createIcons();
+        }
+        const progressSection = document.getElementById('progressSection');
+        if (progressSection) progressSection.classList.add('hidden');
     }
 
     // ===== BGM 预览 =====

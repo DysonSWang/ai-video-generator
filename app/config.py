@@ -40,11 +40,20 @@ REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
 # ============== 其他配置 ==============
 
 # Whisper模型
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 WHISPER_LANGUAGE = "zh"
 
 # CDP端口 (视频下载)
 CDP_PORT = int(os.getenv("CDP_PORT", "9222"))
+
+# ============== OmniVoice (GPU服务器音色克隆) ==============
+OMNIVOICE_HOST = os.getenv("OMNIVOICE_HOST", "117.50.139.155")
+OMNIVOICE_PORT = int(os.getenv("OMNIVOICE_PORT", "23"))
+OMNIVOICE_USER = os.getenv("OMNIVOICE_USER", "root")
+OMNIVOICE_PASSWORD = os.getenv("OMNIVOICE_PASSWORD", "B037yqCoM169v8Z4")
+OMNIVOICE_GRADIO_URL = os.getenv("OMNIVOICE_GRADIO_URL", "http://117.50.139.155:7861")
+OMNIVOICE_OUTPUT_DIR = "/root/OmniVoice/outputs"
+OMNIVOICE_SAVED_VOICES = ["liangzi", "sichuanfenda"]  # 预置音色
 
 # ============== MuseTalk (本地GPU服务器) ==============
 # GPU服务器SSH配置

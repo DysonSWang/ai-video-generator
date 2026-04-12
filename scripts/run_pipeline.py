@@ -34,6 +34,7 @@ from app.services.video_downloader import download_video
 from app.services.speech_to_text import transcribe
 from app.services.text_rewrite import rewrite
 from app.services.voice_clone import clone_and_synthesize
+from app.services.omni_voice import synthesize as omni_synthesize
 from app.services.lip_sync import generate_lip_sync, download_result, generate_lip_sync_by_provider
 from app.services.subtitle import generate_srt, burn_subtitle
 from app.services.music import add_music, MusicOptions
@@ -44,6 +45,9 @@ class PipelineOptions:
     """Pipeline配置选项"""
     # 文案改写风格
     rewrite_style: str = "口语化"
+
+    # TTS音色: "custom"(默认，上传音频克隆) / "liangzi"(预设) / "sichuanfenda"(预设) / <用户音色库ID>
+    tts_voice: str = "custom"
 
     # 是否添加字幕
     add_subtitle: bool = True
@@ -134,10 +138,35 @@ async def run_pipeline(
     print(f"  改写后: {result.rewritten_text[:50]}...")
 
     # Step 4: 音色克隆 + TTS配音
-    print("\n[Step 4/8] 音色克隆 + TTS配音...")
-    tts_result = await clone_and_synthesize(user_audio, result.rewritten_text)
+    print(f"\n[Step 4/8] 音色克隆 + TTS配音 (音色: {options.tts_voice})...")
+    from app.config import OMNIVOICE_SAVED_VOICES
+
+    original_voice = options.tts_voice
+
+    if not original_voice or original_voice == "custom":
+        # 默认：使用上传的参考音频进行 OmniVoice 克隆
+        if user_audio:
+            tts_result = await omni_synthesize(
+                text=result.rewritten_text,
+                voice_name=f"user_{user_id[:8]}",
+                ref_audio_path=user_audio,
+                output_path=str(Path(output_dir) / f"tts_{task_id}.wav")
+            )
+            print(f"  [OmniVoice custom] 音频: {tts_result.audio_path}")
+        else:
+            raise ValueError("需要上传参考音频才能进行音色克隆")
+    elif original_voice in OMNIVOICE_SAVED_VOICES:
+        # OmniVoice 预设音色
+        tts_result = await omni_synthesize(
+            text=result.rewritten_text,
+            voice_name=original_voice,
+            output_path=str(Path(output_dir) / f"tts_{task_id}.wav")
+        )
+        print(f"  [OmniVoice preset:{original_voice}] 音频: {tts_result.audio_path}")
+    else:
+        # 用户音色库音色（scripts版本无DB，仅提示不支持）
+        raise ValueError(f"用户音色库需通过API使用，当前ID: {original_voice}")
     result.tts_audio_path = tts_result.audio_path
-    print(f"  音频: {tts_result.audio_path}")
     print(f"  时长: {tts_result.duration}s")
 
     # Step 5: 口型同步

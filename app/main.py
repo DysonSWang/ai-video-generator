@@ -25,6 +25,7 @@ from app.services.video_downloader import download_video, VideoResult
 from app.services.speech_to_text import transcribe, TranscriptionSegment
 from app.services.text_rewrite import rewrite, polish
 from app.services.voice_clone import clone_and_synthesize
+from app.services.omni_voice import synthesize as omni_synthesize
 from app.services.lip_sync import generate_lip_sync_by_provider
 from app.services.subtitle import generate_srt_async, generate_srt_from_rewritten, generate_ass_from_rewritten, generate_ass_from_tts_audio, burn_subtitle, SubtitleStyle
 from app.services.speech_to_text import extract_audio
@@ -189,6 +190,7 @@ init_db()
 @dataclass
 class PipelineOptions:
     rewrite_style: str = "口语化"
+    tts_voice: str = "custom"  # "custom"=用户上传音频克隆(默认)，或 OmniVoice 预设音色 "liangzi"/"sichuanfenda"，或用户音色库音色ID
     add_subtitle: bool = True
     subtitle_position: str = "bottom"
     music_path: Optional[str] = None  # 自定义音乐文件路径
@@ -624,20 +626,50 @@ async def execute_pipeline(
 
         # Step 4: 音色克隆 + TTS
         save_task(task_id, "processing", 55, "克隆声音并配音...", task_start_time=task_start_time, user_id=user_id)
-        tts_audio_path = str(TASKS_DIR / f"{task_id}_tts.mp3")
-        # 创建数据库会话用于音色库查询/保存
-        from app.auth.database import SessionLocal
-        voice_db = SessionLocal()
-        try:
-            tts_result = await clone_and_synthesize(
-                user_audio, rewritten,
-                voice_name=f"user_{user_id[:8]}",
+        from app.config import OMNIVOICE_SAVED_VOICES
+        tts_audio_path = str(TASKS_DIR / f"{task_id}_tts.wav")
+
+        original_voice = options.tts_voice if options and options.tts_voice else ""
+
+        if not original_voice or original_voice == "custom":
+            # 默认：使用上传的参考音频进行 OmniVoice 克隆
+            if user_audio:
+                tts_result = await omni_synthesize(
+                    text=rewritten,
+                    voice_name=f"user_{user_id[:8]}",
+                    ref_audio_path=user_audio,
+                    output_path=tts_audio_path,
+                )
+            else:
+                raise ValueError("需要上传参考音频才能进行音色克隆")
+        elif original_voice in OMNIVOICE_SAVED_VOICES:
+            # OmniVoice 预设音色
+            tts_result = await omni_synthesize(
+                text=rewritten,
+                voice_name=original_voice,
                 output_path=tts_audio_path,
-                db=voice_db,
-                user_id=user_id,
             )
-        finally:
-            voice_db.close()
+        else:
+            # 用户音色库音色（通过 voice_profiles 表查询）
+            from app.auth.database import SessionLocal
+            voice_db = SessionLocal()
+            try:
+                from app.auth.models import VoiceProfile
+                profile = voice_db.query(VoiceProfile).filter(
+                    VoiceProfile.id == original_voice,
+                    VoiceProfile.user_id == user_id
+                ).first()
+                if profile and profile.reference_audio:
+                    tts_result = await omni_synthesize(
+                        text=rewritten,
+                        voice_name=f"user_voice_{original_voice[:8]}",
+                        ref_audio_path=profile.reference_audio,
+                        output_path=tts_audio_path,
+                    )
+                else:
+                    raise ValueError(f"未找到音色: {original_voice}")
+            finally:
+                voice_db.close()
         merge_task_result(task_id, {
             "tts_audio_path": tts_result.audio_path,
             "pipeline_step": 4
