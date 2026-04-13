@@ -25,4 +25,5 @@ __pycache__/
 # 环境配置
 .env
 .env.local
-.gstack/
+.env.*.local
+app/config.py
