@@ -60,13 +60,6 @@ OMNIVOICE_GRADIO_URL = os.getenv("OMNIVOICE_GRADIO_URL", "http://117.50.139.155:
 OMNIVOICE_OUTPUT_DIR = "/root/OmniVoice/outputs"
 OMNIVOICE_SAVED_VOICES = ["liangzi", "sichuanfenda"]  # 预置音色
 
-# ============== MuseTalk (本地GPU服务器) ==============
-MUSETALK_HOST = os.getenv("MUSETALK_HOST", "117.50.226.177")
-MUSETALK_PORT = int(os.getenv("MUSETALK_PORT", "23"))
-MUSETALK_USER = os.getenv("MUSETALK_USER", "root")
-MUSETALK_PASSWORD = os.getenv("MUSETALK_PASSWORD")
-MUSETALK_URL = os.getenv("MUSETALK_URL", "http://117.50.226.177:7860")
-
 # ============== InfiniteTalk (ComfyUI GPU服务器) ==============
 INFINITETALK_HOST = os.getenv("INFINITETALK_HOST", "117.50.250.191")
 INFINITETALK_PORT = int(os.getenv("INFINITETALK_PORT", "23"))
