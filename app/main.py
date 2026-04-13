@@ -34,9 +34,9 @@ from app.services.pip import add_pip
 from app.config import CDP_PORT
 
 # Auth模块
-from app.auth.database import init_auth_db
+from app.auth.database import init_auth_db, SessionLocal
 from app.auth.router import router as auth_router, get_current_user
-from app.auth.models import User as AuthUser
+from app.auth.models import User as AuthUser, PipelineTask
 from app.middleware.auth import AuthMiddleware
 
 # ============== 辅助函数 ==============
@@ -99,12 +99,13 @@ def upload_bytes_to_oss(content: bytes, oss_key: str, content_type: str = "appli
 def download_oss_to_temp(oss_url: str, suffix: str) -> str:
     """从 OSS 下载文件到临时目录，返回本地路径（用完后需自行删除）"""
     import tempfile
-    # 从 URL 中提取 OSS key
+    from urllib.parse import urlparse
+    # 从 URL 中提取 OSS key（去除 query string 如 ?signature=xxx）
     prefix = f"https://{OSS_BUCKET}.{OSS_ENDPOINT}/"
     if oss_url.startswith(prefix):
-        oss_key = oss_url[len(prefix):]
+        oss_key = oss_url[len(prefix):].split("?")[0]
     else:
-        oss_key = oss_url
+        oss_key = oss_url.split("?")[0]
     bucket = _get_oss_bucket()
     temp_dir = tempfile.gettempdir()
     local_path = str(Path(temp_dir) / f"{uuid.uuid4().hex}_{suffix}")
@@ -202,38 +203,33 @@ def merge_task_result(task_id: str, updates: dict, user_id: Optional[str] = None
     conn.close()
 
 def get_task(task_id: str, user_id: Optional[str] = None) -> Optional[dict]:
-    """从数据库获取任务状态，含 elapsed_seconds 和 pipeline_step"""
-    conn = sqlite3.connect(DB_PATH)
-    if user_id:
-        cursor = conn.execute(
-            "SELECT task_id, status, progress, message, result, created_at, task_start_time, pipeline_step, user_id FROM tasks WHERE task_id = ? AND user_id = ?",
-            (task_id, user_id)
-        )
-    else:
-        cursor = conn.execute(
-            "SELECT task_id, status, progress, message, result, created_at, task_start_time, pipeline_step, user_id FROM tasks WHERE task_id = ?",
-            (task_id,)
-        )
-    row = cursor.fetchone()
-    conn.close()
-    if row:
+    """从数据库获取任务状态（含 elapsed_seconds 和 pipeline_step）"""
+    db = SessionLocal()
+    try:
+        query = db.query(PipelineTask).filter(PipelineTask.task_id == task_id)
+        if user_id:
+            query = query.filter(PipelineTask.user_id == user_id)
+        row = query.first()
+        if not row:
+            return None
         now = time_module.time()
-        task_start = row[6] if row[6] else now
+        task_start = row.task_start_time if row.task_start_time else now
         elapsed = now - task_start
         return {
-            "task_id": row[0],
-            "status": row[1],
-            "progress": row[2],
-            "message": row[3],
-            "result": json.loads(row[4]) if row[4] else None,
-            "created_at": row[5],
-            "task_start_time": row[6],
+            "task_id": row.task_id,
+            "status": row.status,
+            "progress": row.progress,
+            "message": row.message,
+            "result": json.loads(row.result) if row.result else None,
+            "created_at": row.created_at,
+            "task_start_time": row.task_start_time,
             "elapsed_seconds": elapsed,
-            "video_duration": json.loads(row[4]).get("video_duration") if row[4] else None,
-            "pipeline_step": row[7] if len(row) > 7 else 0,
-            "user_id": row[8] if len(row) > 8 else None,
+            "video_duration": json.loads(row.result).get("video_duration") if row.result else None,
+            "pipeline_step": row.pipeline_step or 0,
+            "user_id": row.user_id,
         }
-    return None
+    finally:
+        db.close()
 
 # 初始化数据库
 init_db()
@@ -626,8 +622,22 @@ async def run_pipeline(
     """启动完整Pipeline"""
     task_id = str(uuid.uuid4())
 
-    # 保存初始状态到数据库
-    save_task(task_id, "pending", 0, "任务已创建", user_id=user.id)
+    # 保存初始状态到数据库（写入 pipeline_tasks 表）
+    _db = SessionLocal()
+    try:
+        row = PipelineTask(
+            task_id=task_id,
+            user_id=user.id,
+            status="pending",
+            progress=0,
+            message="任务已创建",
+            result=None,
+            pipeline_step=0,
+        )
+        _db.add(row)
+        _db.commit()
+    finally:
+        _db.close()
 
     # 后台执行
     background_tasks.add_task(
@@ -865,7 +875,8 @@ async def execute_pipeline(
                 ref_video=ref_video,
                 output_path=str(TASKS_DIR / f"{task_id}_lipsync.mp4"),
                 task_id=task_id,
-                max_wait=1800  # 30分钟，支持长任务
+                max_wait=1800,  # 30分钟，支持长任务
+                db=db,
             )
         else:
             # Kling只支持视频，不支持图片
@@ -981,13 +992,13 @@ async def execute_pipeline(
             deduct_video_cost(db, user_id, duration, task_id=task_id)
         except Exception as ue:
             print(f"[用量记录/扣费失败] {ue}")
-        finally:
-            db.close()
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         _save_task(task_id, "failed", 0, f"失败: {str(e)}", task_start_time=task_start_time, user_id=user_id)
+
+    finally:
         db.close()
 
 @app.get("/api/tasks")
@@ -997,26 +1008,31 @@ async def list_tasks(
     user: AuthUser = Depends(get_current_user),
 ):
     """获取任务历史列表（多租户隔离）"""
-    conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute(
-        """SELECT task_id, status, progress, message, result, created_at, task_start_time, pipeline_step
-           FROM tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?""",
-        (user.id, limit, offset)
-    ).fetchall()
-    conn.close()
-    return [
-        {
-            "task_id": r[0],
-            "status": r[1],
-            "progress": r[2],
-            "message": r[3],
-            "result": json.loads(r[4]) if r[4] else None,
-            "created_at": r[5],
-            "task_start_time": r[6],
-            "pipeline_step": r[7] if len(r) > 7 else 0,
-        }
-        for r in rows
-    ]
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(PipelineTask)
+            .filter(PipelineTask.user_id == user.id)
+            .order_by(PipelineTask.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "task_id": r.task_id,
+                "status": r.status,
+                "progress": r.progress,
+                "message": r.message,
+                "result": json.loads(r.result) if r.result else None,
+                "created_at": r.created_at,
+                "task_start_time": r.task_start_time,
+                "pipeline_step": r.pipeline_step or 0,
+            }
+            for r in rows
+        ]
+    finally:
+        db.close()
 
 @app.get("/api/task/{task_id}")
 async def get_task_status(
