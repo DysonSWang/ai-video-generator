@@ -2478,4 +2478,9 @@
     // 初始化时检查登录状态
     checkAuth();
     if (accessToken) loadUsageSummary();
+
+    // admin 页面未认证重定向到 /?showLogin=1，自动弹出登录框
+    if (new URLSearchParams(location.search).get('showLogin') === '1') {
+        openLoginModal();
+    }
     </script>

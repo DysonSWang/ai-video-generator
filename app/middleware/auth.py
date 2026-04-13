@@ -74,8 +74,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     status_code=401,
                     content={"detail": "未认证"},
                 )
-            # HTML页面未认证 -> 重定向到首页
-            return RedirectResponse(url="/", status_code=302)
+            # HTML页面未认证 -> 重定向到首页并提示登录
+            return RedirectResponse(url="/?showLogin=1", status_code=302)
 
         # 填充 user_id 到 request.state
         request.state.user_id = user_id
