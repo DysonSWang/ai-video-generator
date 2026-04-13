@@ -365,6 +365,7 @@
                     <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10">
                         <span class="text-sm" id="navUsername">—</span>
                         <span class="text-xs text-gray-400" id="navBalance">余额: —</span>
+                        <span class="text-xs text-gray-500" id="usageSummary"></span>
                     </div>
                     <button onclick="logout()" class="text-sm text-gray-400 hover:text-white">退出</button>
                 </div>
@@ -610,6 +611,17 @@
 
             <!-- 历史记录面板 -->
             <div id="historyPanel" class="hidden mb-6">
+                <!-- 本月用量汇总 -->
+                <div id="historyUsagePanel" class="glass-card p-4 rounded-lg mb-4 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="bar-chart-2" class="w-4 h-4 text-rose-400"></i>
+                        <span class="text-sm text-gray-300">本月用量</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-xs">
+                        <span class="text-gray-400">任务: <span id="historyTaskCount" class="text-white">—</span></span>
+                        <span class="text-gray-400">视频时长: <span id="historyVideoDuration" class="text-white">—</span></span>
+                    </div>
+                </div>
                 <div id="historyList" class="space-y-3">
                     <div class="text-gray-500 text-sm py-8 text-center">加载中...</div>
                 </div>
@@ -784,6 +796,11 @@
                             <option value="liangzi">🎙️ 预设音色 - 亮子</option>
                             <option value="sichuanfenda">🎙️ 预设音色 - 四川分答</option>
                         </select>
+                    </div>
+                    <div class="mt-2 flex justify-end">
+                        <button onclick="openVoiceLibraryModal()" class="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1">
+                            <i data-lucide="library" class="w-3 h-3"></i> 我的音色库
+                        </button>
                     </div>
                 </div>
 
@@ -1515,6 +1532,22 @@
             const list = document.getElementById('historyList');
             if (!list) return;
             try {
+                // 加载用量汇总
+                const usageRes = await authFetch('/api/usage/summary');
+                if (usageRes.ok) {
+                    const usage = await usageRes.json();
+                    const taskCountEl = document.getElementById('historyTaskCount');
+                    const durationEl = document.getElementById('historyVideoDuration');
+                    if (taskCountEl) taskCountEl.textContent = (usage.task_count || 0) + '个';
+                    if (durationEl) {
+                        const secs = usage.video_duration_seconds || 0;
+                        if (secs >= 60) {
+                            durationEl.textContent = Math.round(secs / 60) + '分钟';
+                        } else {
+                            durationEl.textContent = secs + '秒';
+                        }
+                    }
+                }
                 const res = await authFetch('/api/tasks?limit=20');
                 const tasks = await res.json();
                 if (!tasks || tasks.length === 0) {
@@ -1855,6 +1888,33 @@
             </div>
             <div class="video-preview-body">
                 <video id="videoPreviewPlayerModal" controls playsinline></video>
+            </div>
+        </div>
+    </div>
+    <!-- 音色库 Modal -->
+    <div id="voiceLibraryModal" class="error-modal-overlay hidden" style="display:none;">
+        <div class="error-modal-box" style="max-width:500px;">
+            <div class="error-modal-header">
+                <span class="error-modal-title">我的音色库</span>
+                <button class="error-modal-close" onclick="closeVoiceLibraryModal()">&times;</button>
+            </div>
+            <div style="margin: 16px 0;">
+                <!-- 创建新音色 -->
+                <div class="glass p-4 rounded-lg mb-4">
+                    <div class="text-xs text-gray-400 mb-2">保存当前音色</div>
+                    <div class="flex gap-2">
+                        <input type="text" id="newVoiceName" placeholder="给音色起个名字" class="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-white text-sm">
+                        <select id="newVoiceAudioSelect" class="bg-gray-800 border border-gray-600 rounded px-2 py-2 text-white text-sm" style="max-width:160px;">
+                            <option value="">选择音频</option>
+                        </select>
+                        <button onclick="createVoiceProfile()" id="createVoiceBtn" class="bg-rose-500 hover:bg-rose-600 text-white rounded px-3 py-2 text-sm">保存</button>
+                    </div>
+                    <div id="createVoiceStatus" class="text-xs mt-2 hidden"></div>
+                </div>
+                <!-- 音色列表 -->
+                <div id="voiceLibraryList" class="space-y-2 max-h-64 overflow-y-auto">
+                    <div class="text-center text-gray-500 text-sm py-8">加载中...</div>
+                </div>
             </div>
         </div>
     </div>
@@ -2258,13 +2318,124 @@
         lucide.createIcons();
     }
 
+    // ========== 音色库 Modal ==========
+    async function openVoiceLibraryModal() {
+        const modal = document.getElementById('voiceLibraryModal');
+        if (!modal) return;
+        modal.style.display = 'flex';
+        // 加载音色列表
+        loadVoiceLibraryList();
+        // 加载用户音频列表到下拉
+        loadAudioListForVoice();
+    }
+
+    function closeVoiceLibraryModal() {
+        document.getElementById('voiceLibraryModal').style.display = 'none';
+    }
+
+    async function loadVoiceLibraryList() {
+        const list = document.getElementById('voiceLibraryList');
+        if (!list) return;
+        list.innerHTML = '<div class="text-center text-gray-500 text-sm py-8">加载中...</div>';
+        try {
+            const res = await authFetch('/api/voices');
+            const voices = await res.json();
+            if (!voices || voices.length === 0) {
+                list.innerHTML = '<div class="text-center text-gray-500 text-sm py-8">暂无已保存音色<br><span class="text-xs">上传音频后在下方填写名称保存</span></div>';
+                return;
+            }
+            list.innerHTML = voices.map(v => `
+                <div class="flex items-center justify-between p-3 bg-gray-800/40 rounded-lg border border-white/5">
+                    <div>
+                        <div class="text-white text-sm font-medium">${v.voice_name}</div>
+                        <div class="text-xs text-gray-500 mt-1">使用 ${v.usage_count} 次 · ${new Date(v.created_at).toLocaleDateString('zh-CN')}</div>
+                    </div>
+                    <button onclick="deleteVoiceProfile('${v.id}')" class="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded border border-red-400/30 hover:border-red-400/60">删除</button>
+                </div>
+            `).join('');
+        } catch(e) {
+            list.innerHTML = '<div class="text-center text-red-400 text-sm py-8">加载失败</div>';
+        }
+    }
+
+    async function loadAudioListForVoice() {
+        const select = document.getElementById('newVoiceAudioSelect');
+        if (!select) return;
+        select.innerHTML = '<option value="">选择音频</option>';
+        try {
+            const res = await authFetch('/api/audios');
+            const audios = await res.json();
+            audios.forEach(a => {
+                const opt = document.createElement('option');
+                opt.value = a.audio_id;
+                opt.textContent = a.filename;
+                select.appendChild(opt);
+            });
+        } catch(e) {
+            // ignore
+        }
+    }
+
+    async function createVoiceProfile() {
+        const nameInput = document.getElementById('newVoiceName');
+        const audioSelect = document.getElementById('newVoiceAudioSelect');
+        const statusEl = document.getElementById('createVoiceStatus');
+        const btn = document.getElementById('createVoiceBtn');
+        const name = nameInput?.value?.trim();
+        const audioId = audioSelect?.value;
+        if (!name) { statusEl.textContent = '请输入音色名称'; statusEl.className = 'text-xs mt-2 text-red-400'; statusEl.classList.remove('hidden'); return; }
+        if (!audioId) { statusEl.textContent = '请选择参考音频'; statusEl.className = 'text-xs mt-2 text-red-400'; statusEl.classList.remove('hidden'); return; }
+        btn.disabled = true;
+        btn.textContent = '保存中...';
+        try {
+            const res = await authFetch('/api/voices', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reference_audio_id: audioId, voice_name: name })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || '保存失败');
+            statusEl.textContent = '保存成功';
+            statusEl.className = 'text-xs mt-2 text-green-400';
+            statusEl.classList.remove('hidden');
+            nameInput.value = '';
+            audioSelect.value = '';
+            loadVoiceLibraryList();
+            loadUserVoices(); // 刷新主面板下拉
+        } catch(e) {
+            statusEl.textContent = e.message;
+            statusEl.className = 'text-xs mt-2 text-red-400';
+            statusEl.classList.remove('hidden');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '保存';
+        }
+    }
+
+    async function deleteVoiceProfile(voiceId) {
+        if (!confirm('确定删除该音色？')) return;
+        try {
+            const res = await authFetch(`/api/voices/${voiceId}`, { method: 'DELETE' });
+            if (!res.ok) { const d = await res.json(); throw new Error(d.detail || '删除失败'); }
+            loadVoiceLibraryList();
+            loadUserVoices(); // 刷新主面板下拉
+        } catch(e) {
+            alert('删除失败: ' + e.message);
+        }
+    }
+
+    // ========== 用量展示 ==========
+    async function loadUsageSummary() {
+        const el = document.getElementById('usageSummary');
+        if (!el) return;
+        try {
+            const res = await authFetch('/api/usage/summary');
+            if (!res.ok) return;
+            const data = await res.json();
+            el.innerHTML = `<span class="text-xs text-gray-400">本月: ${data.task_count || 0}个任务 · ${Math.round((data.video_duration_seconds || 0) / 60)}分钟视频</span>`;
+        } catch(e) {}
+    }
+
     // 初始化时检查登录状态
     checkAuth();
-
-    // 页面加载完成后初始化图标
-    document.addEventListener('DOMContentLoaded', () => {
-        lucide.createIcons();
-    });
-    </script>
-</body>
-</html>
+    if (accessToken) loadUsageSummary();

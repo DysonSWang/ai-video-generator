@@ -142,6 +142,11 @@ class VoiceProfileResponse(BaseModel):
         from_attributes = True
 
 
+class VoiceCreate(BaseModel):
+    reference_audio_id: str  # 已上传音频的 file_id
+    voice_name: str          # 音色名称（如"我的声音"）
+
+
 class VoiceSynthesizeRequest(BaseModel):
     text: str
     output_path: Optional[str] = None

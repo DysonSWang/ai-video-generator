@@ -316,6 +316,53 @@ def get_transactions(
 
 # ========== 音色库接口 ==========
 
+@router.post("/voices", response_model=auth_schemas.VoiceProfileResponse)
+def create_voice(
+    body: auth_schemas.VoiceCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """从已上传音频创建音色档案（克隆音色到音色库）"""
+    from pathlib import Path
+    from app.auth.models import VoiceProfile
+
+    # 解析参考音频路径（UPLOAD_DIR = BASE_DIR / "assets"）
+    BASE_DIR = Path(__file__).parent.parent.parent  # app/auth/router.py -> app -> 项目根
+    UPLOAD_DIR = BASE_DIR / "assets"
+    audio_extensions = ['.wav', '.mp3', '.m4a', '.aac']
+    reference_audio = None
+    for ext in audio_extensions:
+        audio_path = UPLOAD_DIR / user.id / "audios" / f"{body.reference_audio_id}{ext}"
+        if audio_path.exists():
+            reference_audio = str(audio_path)
+            break
+
+    if not reference_audio:
+        raise HTTPException(404, "参考音频不存在或已删除")
+
+    # 检查同名音色
+    existing = db.query(VoiceProfile).filter(
+        VoiceProfile.user_id == user.id,
+        VoiceProfile.voice_name == body.voice_name
+    ).first()
+    if existing:
+        raise HTTPException(400, "音色名称已存在")
+
+    profile = VoiceProfile(
+        id=str(uuid.uuid4()),
+        user_id=user.id,
+        voice_uri=f"user_voice_{uuid.uuid4().hex[:8]}",  # OmniVoice无持久voice_uri，用自定义ID
+        voice_name=body.voice_name,
+        reference_audio=reference_audio,
+        reference_text="",
+        usage_count=0,
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
 @router.get("/voices", response_model=list[auth_schemas.VoiceProfileResponse])
 def list_voices(
     db: Session = Depends(get_db),

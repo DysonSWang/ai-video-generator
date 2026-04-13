@@ -417,6 +417,27 @@ async def upload_audio(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/audios")
+async def list_user_audios(
+    user: AuthUser = Depends(get_current_user),
+):
+    """获取用户已上传的音频列表（用于音色库创建）"""
+    audio_dir = UPLOAD_DIR / user.id / "audios"
+    if not audio_dir.exists():
+        return []
+    audio_extensions = {'.wav', '.mp3', '.m4a', '.aac'}
+    audios = []
+    for f in audio_dir.iterdir():
+        if f.is_file() and f.suffix.lower() in audio_extensions:
+            audios.append({
+                "audio_id": f.stem,  # UUID without extension
+                "filename": f.name,
+                "size": f.stat().st_size,
+            })
+    # 按修改时间倒序
+    audios.sort(key=lambda x: x['audio_id'], reverse=True)
+    return audios
+
 @app.post("/api/upload/music")
 async def upload_music(
     request: Request,
