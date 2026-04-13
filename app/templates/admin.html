@@ -103,6 +103,9 @@
                 <button onclick="showTab('balance')" class="tab-btn w-full text-left flex items-center gap-3" id="tab-balance">
                     <i data-lucide="wallet" class="w-4 h-4"></i> 余额管理
                 </button>
+                <button onclick="showTab('billing')" class="tab-btn w-full text-left flex items-center gap-3" id="tab-billing">
+                    <i data-lucide="credit-card" class="w-4 h-4"></i> 计费配置
+                </button>
             </nav>
             <div class="p-4 border-t border-white/10">
                 <button onclick="logout()" class="w-full flex items-center gap-3 px-4 py-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 transition-colors">
@@ -237,6 +240,33 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 计费配置 -->
+            <div id="panel-billing" class="fade-in hidden">
+                <h1 class="text-2xl font-bold mb-6 flex items-center gap-3">
+                    <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-400">
+                        <i data-lucide="credit-card" class="w-4 h-4"></i>
+                    </span>
+                    计费配置
+                </h1>
+                <div class="glass-card p-6 mb-6">
+                    <h3 class="font-semibold mb-4">视频生成费率</h3>
+                    <div class="flex gap-3 items-end">
+                        <div>
+                            <label class="text-sm text-gray-400 mb-1 block">单价（元/秒）</label>
+                            <input type="number" id="billingRate" step="0.001" min="0" class="input-field w-40" placeholder="0.01">
+                        </div>
+                        <div class="text-xs text-gray-500">按生成视频的时长×费率扣费，余额可为负值</div>
+                        <button onclick="saveBillingRate()" id="saveBillingBtn" class="btn-primary px-5 py-2.5 text-sm">保存</button>
+                    </div>
+                    <div id="billingRateStatus" class="text-xs mt-2 hidden"></div>
+                    <div class="mt-4 p-3 bg-black/20 rounded text-xs text-gray-400">
+                        <div>参考：10秒视频 = <span id="rate10s">—</span> 元</div>
+                        <div>60秒视频 = <span id="rate60s">—</span> 元</div>
+                        <div>180秒视频 = <span id="rate180s">—</span> 元</div>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -322,11 +352,13 @@
 
         // ===== 标签页 =====
         function showTab(tab) {
-            ['users','usage','balance'].forEach(t => {
+            ['users','usage','balance','billing'].forEach(t => {
                 document.getElementById('panel-' + t).classList.add('hidden');
                 document.getElementById('tab-' + t).classList.remove('active');
             });
             document.getElementById('panel-' + tab).classList.remove('hidden');
+            document.getElementById('tab-' + tab).classList.add('active');
+            if (tab === 'billing') loadBillingConfig();
             document.getElementById('tab-' + tab).classList.add('active');
             lucide.createIcons();
         }
@@ -493,6 +525,51 @@
                     `).join('');
                 }
             } catch(e) { console.error(e); }
+        }
+
+        // ===== 计费配置 =====
+        async function loadBillingConfig() {
+            try {
+                const res = await fetch('/api/admin/config/billing', { headers: { 'Authorization': 'Bearer ' + accessToken } });
+                if (!res.ok) return;
+                const cfg = await res.json();
+                const rate = cfg.rate_per_second;
+                document.getElementById('billingRate').value = rate;
+                document.getElementById('rate10s').textContent = (rate * 10).toFixed(4);
+                document.getElementById('rate60s').textContent = (rate * 60).toFixed(2);
+                document.getElementById('rate180s').textContent = (rate * 180).toFixed(2);
+            } catch(e) { console.error(e); }
+        }
+
+        async function saveBillingRate() {
+            const rate = parseFloat(document.getElementById('billingRate').value);
+            const statusEl = document.getElementById('billingRateStatus');
+            const btn = document.getElementById('saveBillingBtn');
+            if (isNaN(rate) || rate < 0) { statusEl.textContent = '请输入有效价格'; statusEl.className = 'text-xs mt-2 text-red-400'; statusEl.classList.remove('hidden'); return; }
+            btn.disabled = true;
+            btn.textContent = '保存中...';
+            try {
+                const res = await fetch('/api/admin/config/billing', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+                    body: JSON.stringify({ rate_per_second: rate })
+                });
+                if (!res.ok) throw new Error('保存失败');
+                statusEl.textContent = '保存成功';
+                statusEl.className = 'text-xs mt-2 text-green-400';
+                statusEl.classList.remove('hidden');
+                // 更新预览
+                document.getElementById('rate10s').textContent = (rate * 10).toFixed(4);
+                document.getElementById('rate60s').textContent = (rate * 60).toFixed(2);
+                document.getElementById('rate180s').textContent = (rate * 180).toFixed(2);
+            } catch(e) {
+                statusEl.textContent = e.message;
+                statusEl.className = 'text-xs mt-2 text-red-400';
+                statusEl.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '保存';
+            }
         }
 
         // ===== 余额管理 =====

@@ -838,19 +838,21 @@ async def execute_pipeline(
             final_result["audio_duration"] = tts_result.duration
         save_task(task_id, "completed", 100, "完成!", final_result, task_start_time=task_start_time, user_id=user_id)
 
-        # 记录用量
+        # 记录用量 + 扣费
         try:
-            from app.auth.usage_service import record_usage
+            from app.auth.usage_service import record_usage, deduct_video_cost
             from app.auth.database import SessionLocal
             db = SessionLocal()
             try:
                 duration = tts_result.duration if 'tts_result' in dir() else (video_duration or 0)
                 record_usage(db, user_id, "task_count", 1, task_id=task_id)
                 record_usage(db, user_id, "video_duration_seconds", int(duration), task_id=task_id)
+                # 按视频时长扣费（支持扣到负值）
+                deduct_video_cost(db, user_id, duration, task_id=task_id)
             finally:
                 db.close()
         except Exception as ue:
-            print(f"[用量记录失败] {ue}")
+            print(f"[用量记录/扣费失败] {ue}")
 
     except Exception as e:
         import traceback

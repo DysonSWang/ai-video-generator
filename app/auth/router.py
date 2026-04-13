@@ -224,6 +224,53 @@ def adjust_balance(
     return {"balance": user.balance}
 
 
+# ========== 计费配置接口 ==========
+
+RATE_KEY = "billing_rate_per_second"
+DEFAULT_RATE = 0.01  # 默认 0.01 元/秒
+
+@router.get("/admin/config/billing", response_model=auth_schemas.BillingConfigResponse)
+def get_billing_config(
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """获取计费配置"""
+    from app.auth.models import SystemConfig
+    cfg = db.query(SystemConfig).filter(SystemConfig.key == RATE_KEY).first()
+    if cfg:
+        import json
+        data = json.loads(cfg.value)
+        return auth_schemas.BillingConfigResponse(
+            rate_per_second=data.get("rate_per_second", DEFAULT_RATE),
+            updated_at=str(cfg.updated_at) if cfg.updated_at else None,
+        )
+    return auth_schemas.BillingConfigResponse(rate_per_second=DEFAULT_RATE)
+
+
+@router.put("/admin/config/billing")
+def update_billing_config(
+    body: auth_schemas.BillingConfigUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """更新计费配置"""
+    import json
+    from app.auth.models import SystemConfig
+    cfg = db.query(SystemConfig).filter(SystemConfig.key == RATE_KEY).first()
+    if cfg:
+        cfg.value = json.dumps({"rate_per_second": body.rate_per_second})
+        cfg.updated_by = admin.id
+    else:
+        cfg = SystemConfig(
+            key=RATE_KEY,
+            value=json.dumps({"rate_per_second": body.rate_per_second}),
+            updated_by=admin.id,
+        )
+        db.add(cfg)
+    db.commit()
+    return {"rate_per_second": body.rate_per_second}
+
+
 # ========== API Key 接口 ==========
 
 @router.get("/apikeys", response_model=list[auth_schemas.ApiKeyResponse])

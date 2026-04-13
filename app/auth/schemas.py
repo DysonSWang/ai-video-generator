@@ -151,3 +151,14 @@ class VoiceSynthesizeRequest(BaseModel):
     text: str
     output_path: Optional[str] = None
     speed: float = 1.0
+
+
+# ========== Billing Config Schemas ==========
+
+class BillingConfigResponse(BaseModel):
+    rate_per_second: float  # 每秒视频价格（元）
+    updated_at: Optional[str] = None
+
+
+class BillingConfigUpdate(BaseModel):
+    rate_per_second: float  # 元/秒

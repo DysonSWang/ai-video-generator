@@ -131,3 +131,13 @@ class Package(Base):
     valid_days = Column(Integer, default=30)
     status = Column(String(16), default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SystemConfig(Base):
+    """系统配置（key-value）"""
+    __tablename__ = "system_config"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(Text, nullable=False)  # JSON 字符串存储
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = Column(String(36), nullable=True)
