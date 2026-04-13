@@ -609,11 +609,45 @@ async def run_pipeline(
     user: AuthUser = Depends(get_current_user),
 ):
     """启动完整Pipeline"""
-    task_id = str(uuid.uuid4())
+    from app.auth.usage_service import get_rate_per_second, CHARS_PER_SECOND as _CHARS_PER_SECOND
 
-    # 保存初始状态到数据库（写入 pipeline_tasks 表）
     _db = SessionLocal()
     try:
+        # ===== 排队管理：检查用户是否有进行中的任务 =====
+        active = (
+            _db.query(PipelineTask)
+            .filter(
+                PipelineTask.user_id == user.id,
+                PipelineTask.status.in_(["pending", "processing"])
+            )
+            .first()
+        )
+        if active:
+            raise HTTPException(
+                status_code=429,
+                detail="您有任务正在进行中，请等待完成后再创建新任务"
+            )
+
+        # ===== 余额检查：预估费用大于余额则拒绝 =====
+        rate_val = get_rate_per_second(_db)
+
+        # 估算时长和费用
+        if request.confirmed_text:
+            est_duration = len(request.confirmed_text) / _CHARS_PER_SECOND
+        elif request.video_duration:
+            est_duration = float(request.video_duration)
+        else:
+            est_duration = 0
+
+        est_cost = round(est_duration * rate_val, 4)
+        if user.balance < est_cost:
+            raise HTTPException(
+                status_code=400,
+                detail=f"预估费用 {est_cost:.2f} 元超过当前余额 {user.balance:.2f} 元，请充值后重试"
+            )
+
+        # 保存初始状态到数据库（写入 pipeline_tasks 表）
+        task_id = str(uuid.uuid4())
         row = PipelineTask(
             task_id=task_id,
             user_id=user.id,
