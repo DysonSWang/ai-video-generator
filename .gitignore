@@ -27,3 +27,4 @@ __pycache__/
 .env.local
 .env.*.local
 app/config.py
+.gstack/
