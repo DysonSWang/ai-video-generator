@@ -609,8 +609,6 @@ async def run_pipeline(
     user: AuthUser = Depends(get_current_user),
 ):
     """启动完整Pipeline"""
-    from app.auth.usage_service import get_rate_per_second, CHARS_PER_SECOND as _CHARS_PER_SECOND
-
     _db = SessionLocal()
     try:
         # ===== 排队管理：检查用户是否有进行中的任务 =====
@@ -626,24 +624,6 @@ async def run_pipeline(
             raise HTTPException(
                 status_code=429,
                 detail="您有任务正在进行中，请等待完成后再创建新任务"
-            )
-
-        # ===== 余额检查：预估费用大于余额则拒绝 =====
-        rate_val = get_rate_per_second(_db)
-
-        # 估算时长和费用
-        if request.confirmed_text:
-            est_duration = len(request.confirmed_text) / _CHARS_PER_SECOND
-        elif request.video_duration:
-            est_duration = float(request.video_duration)
-        else:
-            est_duration = 0
-
-        est_cost = round(est_duration * rate_val, 4)
-        if user.balance < est_cost:
-            raise HTTPException(
-                status_code=400,
-                detail=f"预估费用 {est_cost:.2f} 元超过当前余额 {user.balance:.2f} 元，请充值后重试"
             )
 
         # 保存初始状态到数据库（写入 pipeline_tasks 表）
@@ -701,11 +681,29 @@ async def execute_pipeline(
     """
     from app.auth.database import SessionLocal
     from app.auth.models import PipelineTask
+    from app.auth.usage_service import get_rate_per_second, CHARS_PER_SECOND as _CHARS_PER_SECOND
     import json as _json
 
     db = SessionLocal()
     loop = asyncio.get_event_loop()
     task_start_time = time_module.time()
+
+    # ===== 余额检查：不足则标记待支付，不浪费 GPU 时间 =====
+    rate_val = get_rate_per_second(db)
+    est_duration = 0
+    if confirmed_text:
+        est_duration = len(confirmed_text) / _CHARS_PER_SECOND
+    elif video_duration:
+        est_duration = float(video_duration)
+    est_cost = round(est_duration * rate_val, 4)
+
+    user_row = db.query(AuthUser).filter(AuthUser.id == user_id).first()
+    if not user_row or user_row.balance < est_cost:
+        _save_task(task_id, "awaiting_payment", 0,
+            f"余额不足（预估 {est_cost:.2f} 元，当前 {user_row.balance if user_row else 0:.2f} 元），请充值后重试",
+            task_start_time=task_start_time, user_id=user_id)
+        db.close()
+        return
 
     def _save_task(task_id, status, progress, message, result=None, task_start_time=None, pipeline_step=None, user_id=None):
         result_json = _json.dumps(result) if result else None
