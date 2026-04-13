@@ -74,9 +74,11 @@ TASKS_DIR.mkdir(parents=True, exist_ok=True)
 # ============== OSS 文件管理 ==============
 from app.config import OSS_ACCESS_KEY, OSS_SECRET_KEY, OSS_BUCKET, OSS_ENDPOINT
 import oss2
+from functools import lru_cache
 
+@lru_cache(maxsize=1)
 def _get_oss_bucket():
-    """获取 OSS Bucket 实例"""
+    """获取 OSS Bucket 实例（缓存复用）"""
     auth = oss2.Auth(OSS_ACCESS_KEY, OSS_SECRET_KEY)
     return oss2.Bucket(auth, OSS_ENDPOINT, OSS_BUCKET)
 
@@ -111,19 +113,6 @@ def download_oss_to_temp(oss_url: str, suffix: str) -> str:
     local_path = str(Path(temp_dir) / f"{uuid.uuid4().hex}_{suffix}")
     bucket.get_object_to_file(oss_key, local_path)
     return local_path
-
-def ensure_oss_file(file_ref: str, suffix: str) -> str:
-    """确保文件是本地路径：如果是 OSS URL 则下载到临时目录，否则直接返回
-
-    Args:
-        file_ref: 文件路径或 OSS URL
-        suffix: 临时文件后缀（如 .mp4, .wav）
-    Returns:
-        本地文件路径（调用方负责删除）
-    """
-    if file_ref.startswith("https://") or file_ref.startswith("http://"):
-        return download_oss_to_temp(file_ref, suffix)
-    return file_ref
 
 # ============== 模板配置 ==============
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -999,6 +988,13 @@ async def execute_pipeline(
         _save_task(task_id, "failed", 0, f"失败: {str(e)}", task_start_time=task_start_time, user_id=user_id)
 
     finally:
+        # 清理从 OSS 下载的临时文件
+        for _tmp_file in [user_video, user_audio]:
+            if _tmp_file and _tmp_file.startswith("/tmp/"):
+                try:
+                    Path(_tmp_file).unlink(missing_ok=True)
+                except Exception:
+                    pass
         db.close()
 
 @app.get("/api/tasks")
