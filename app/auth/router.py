@@ -311,6 +311,20 @@ def delete_api_key(
     return {"ok": True}
 
 
+# ========== 费用估算接口 ==========
+
+@router.post("/estimate-cost", response_model=auth_schemas.EstimateCostResponse)
+def estimate_cost_api(
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """根据文案估算生成费用"""
+    text = body.get("text", "")
+    if not text:
+        raise HTTPException(400, "文案不能为空")
+    return usage_service.estimate_cost(db, text)
+
+
 # ========== 用量接口 ==========
 
 @router.get("/usage/summary", response_model=auth_schemas.UsageSummary)

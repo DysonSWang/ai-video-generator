@@ -162,3 +162,9 @@ class BillingConfigResponse(BaseModel):
 
 class BillingConfigUpdate(BaseModel):
     rate_per_second: float  # 元/秒
+
+
+class EstimateCostResponse(BaseModel):
+    estimated_duration: float  # 估算时长（秒）
+    estimated_cost: float     # 估算费用（元）
+    rate_per_second: float   # 当前费率

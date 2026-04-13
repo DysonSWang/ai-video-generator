@@ -140,3 +140,25 @@ def get_rate_per_second(db: Session) -> float:
         data = json.loads(cfg.value)
         return data.get("rate_per_second", DEFAULT_RATE)
     return DEFAULT_RATE
+
+
+# 估算每秒处理字符数（中文口语化文案）
+CHARS_PER_SECOND = 4.5
+
+def estimate_cost(db: Session, text: str) -> dict:
+    """根据文案估算视频时长和费用
+
+    Returns:
+        estimated_duration: 估算时长（秒）
+        estimated_cost: 估算费用（元）
+        rate: 当前费率
+    """
+    rate = get_rate_per_second(db)
+    # 中文字符估算：约 4.5 字/秒（口语化语速）
+    estimated_duration = round(len(text) / CHARS_PER_SECOND, 1)
+    estimated_cost = round(estimated_duration * rate, 4)
+    return {
+        "estimated_duration": estimated_duration,
+        "estimated_cost": estimated_cost,
+        "rate_per_second": rate,
+    }
