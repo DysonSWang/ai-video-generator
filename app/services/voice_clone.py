@@ -31,7 +31,24 @@ class SynthesisResult:
     duration: float      # 时长(秒)
 
 def _get_audio_base64(audio_path: str) -> str:
-    """获取音频的base64编码"""
+    """获取音频的base64编码（支持本地路径和 OSS URL）"""
+    import tempfile
+    from pathlib import Path
+    if audio_path.startswith("https://") or audio_path.startswith("http://"):
+        # 从 OSS 下载到临时文件
+        from app.config import OSS_ACCESS_KEY, OSS_SECRET_KEY, OSS_BUCKET, OSS_ENDPOINT
+        import oss2
+        auth = oss2.Auth(OSS_ACCESS_KEY, OSS_SECRET_KEY)
+        bucket = oss2.Bucket(auth, OSS_ENDPOINT, OSS_BUCKET)
+        prefix = f"https://{OSS_BUCKET}.{OSS_ENDPOINT}/"
+        oss_key = audio_path[len(prefix):] if audio_path.startswith(prefix) else audio_path
+        suffix = Path(oss_key).suffix or ".audio"
+        tmp_path = Path(tempfile.gettempdir()) / f"{uuid.uuid4().hex}_ref{suffix}"
+        bucket.get_object_to_file(oss_key, str(tmp_path))
+        with open(tmp_path, 'rb') as f:
+            data = base64.b64encode(f.read()).decode()
+        tmp_path.unlink(missing_ok=True)
+        return data
     with open(audio_path, 'rb') as f:
         return base64.b64encode(f.read()).decode()
 

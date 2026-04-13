@@ -71,6 +71,59 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
+# ============== OSS 文件管理 ==============
+from app.config import OSS_ACCESS_KEY, OSS_SECRET_KEY, OSS_BUCKET, OSS_ENDPOINT
+import oss2
+
+def _get_oss_bucket():
+    """获取 OSS Bucket 实例"""
+    auth = oss2.Auth(OSS_ACCESS_KEY, OSS_SECRET_KEY)
+    return oss2.Bucket(auth, OSS_ENDPOINT, OSS_BUCKET)
+
+def upload_file_to_oss(local_path: str, oss_key: str) -> str:
+    """上传本地文件到 OSS，返回公开 URL"""
+    bucket = _get_oss_bucket()
+    result = bucket.put_object_from_file(oss_key, local_path)
+    if result.status != 200:
+        raise RuntimeError(f"OSS上传失败: {result.status}")
+    return f"https://{OSS_BUCKET}.{OSS_ENDPOINT}/{oss_key}"
+
+def upload_bytes_to_oss(content: bytes, oss_key: str, content_type: str = "application/octet-stream") -> str:
+    """上传字节内容到 OSS，返回公开 URL"""
+    bucket = _get_oss_bucket()
+    result = bucket.put_object(oss_key, content, headers={"Content-Type": content_type})
+    if result.status != 200:
+        raise RuntimeError(f"OSS上传失败: {result.status}")
+    return f"https://{OSS_BUCKET}.{OSS_ENDPOINT}/{oss_key}"
+
+def download_oss_to_temp(oss_url: str, suffix: str) -> str:
+    """从 OSS 下载文件到临时目录，返回本地路径（用完后需自行删除）"""
+    import tempfile
+    # 从 URL 中提取 OSS key
+    prefix = f"https://{OSS_BUCKET}.{OSS_ENDPOINT}/"
+    if oss_url.startswith(prefix):
+        oss_key = oss_url[len(prefix):]
+    else:
+        oss_key = oss_url
+    bucket = _get_oss_bucket()
+    temp_dir = tempfile.gettempdir()
+    local_path = str(Path(temp_dir) / f"{uuid.uuid4().hex}_{suffix}")
+    bucket.get_object_to_file(oss_key, local_path)
+    return local_path
+
+def ensure_oss_file(file_ref: str, suffix: str) -> str:
+    """确保文件是本地路径：如果是 OSS URL 则下载到临时目录，否则直接返回
+
+    Args:
+        file_ref: 文件路径或 OSS URL
+        suffix: 临时文件后缀（如 .mp4, .wav）
+    Returns:
+        本地文件路径（调用方负责删除）
+    """
+    if file_ref.startswith("https://") or file_ref.startswith("http://"):
+        return download_oss_to_temp(file_ref, suffix)
+    return file_ref
+
 # ============== 模板配置 ==============
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -294,7 +347,25 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # ============== 辅助函数 ==============
 
 def _resolve_file_path(upload_dir: Path, file_id: str, extensions: list) -> Optional[str]:
-    """根据file_id查找实际文件路径"""
+    """根据file_id查找实际文件路径
+
+    支持两种格式：
+    1. OSS URL（如 https://annsight-images.oss-cn-shenzhen.aliyuncs.com/users/{user_id}/videos/xxx.mp4）
+       → 下载到临时目录返回本地路径
+    2. 本地 UUID 文件名（兼容迁移前的旧数据）
+       → 在 upload_dir 下查找对应文件
+    """
+    # 如果是 OSS URL，直接下载到临时文件
+    if file_id.startswith("https://") or file_id.startswith("http://"):
+        # 从 URL 中提取文件后缀
+        oss_url = file_id
+        # 找后缀
+        for ext in extensions:
+            if oss_url.endswith(ext):
+                return download_oss_to_temp(oss_url, f"resolve{ext}")
+        # 尝试从 URL 中提取原始后缀
+        return download_oss_to_temp(oss_url, "resolve")
+    # 旧格式：UUID 文件名，查找本地
     for ext in extensions:
         path = upload_dir / f"{file_id}{ext}"
         if path.exists():
@@ -306,22 +377,39 @@ def _resolve_file_path(upload_dir: Path, file_id: str, extensions: list) -> Opti
     return None
 
 async def save_upload_file(upload_file: UploadFile, subdir: str, user_id: Optional[str] = None) -> str:
-    """保存上传文件（多租户隔离）"""
-    if user_id:
-        save_dir = UPLOAD_DIR / user_id / subdir
-    else:
-        save_dir = UPLOAD_DIR / subdir
-    save_dir.mkdir(parents=True, exist_ok=True)
+    """保存上传文件到 OSS（多租户隔离）
 
+    直接上传到 OSS，不在本机留存。
+    返回 OSS URL（作为 file_id 使用）。
+    """
+    content = await upload_file.read()
     file_id = str(uuid.uuid4())
     ext = Path(upload_file.filename).suffix if upload_file.filename else ".mp4"
-    file_path = save_dir / f"{file_id}{ext}"
 
-    with open(file_path, "wb") as f:
-        content = await upload_file.read()
-        f.write(content)
+    # 确定 content-type
+    content_type_map = {
+        ".mp4": "video/mp4",
+        ".mov": "video/quicktime",
+        ".avi": "video/x-msvideo",
+        ".mkv": "video/x-matroska",
+        ".webm": "video/webm",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".wav": "audio/wav",
+        ".mp3": "audio/mpeg",
+        ".m4a": "audio/mp4",
+        ".aac": "audio/aac",
+    }
+    content_type = content_type_map.get(ext.lower(), "application/octet-stream")
 
-    return str(file_path)
+    # OSS key: users/{user_id}/videos/xxx.mp4
+    user_path = f"users/{user_id}/{subdir}" if user_id else f"users/{subdir}"
+    oss_key = f"{user_path}/{file_id}{ext}"
+
+    oss_url = upload_bytes_to_oss(content, oss_key, content_type)
+    return oss_url
 
 def _run_sync_in_executor(loop, func, *args):
     """在线程池中运行同步函数"""
@@ -410,10 +498,10 @@ async def upload_audio(
     file: UploadFile = File(...),
     user: AuthUser = Depends(get_current_user),
 ):
-    """上传用户声音参考音频"""
+    """上传用户声音参考音频（存OSS，返回URL）"""
     try:
-        file_path = await save_upload_file(file, "audios", user_id=user.id)
-        return {"audio_id": Path(file_path).stem, "path": file_path}
+        oss_url = await save_upload_file(file, "audios", user_id=user.id)
+        return {"audio_id": oss_url, "path": oss_url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -421,22 +509,28 @@ async def upload_audio(
 async def list_user_audios(
     user: AuthUser = Depends(get_current_user),
 ):
-    """获取用户已上传的音频列表（用于音色库创建）"""
-    audio_dir = UPLOAD_DIR / user.id / "audios"
-    if not audio_dir.exists():
-        return []
-    audio_extensions = {'.wav', '.mp3', '.m4a', '.aac'}
-    audios = []
-    for f in audio_dir.iterdir():
-        if f.is_file() and f.suffix.lower() in audio_extensions:
-            audios.append({
-                "audio_id": f.stem,  # UUID without extension
-                "filename": f.name,
-                "size": f.stat().st_size,
-            })
-    # 按修改时间倒序
-    audios.sort(key=lambda x: x['audio_id'], reverse=True)
-    return audios
+    """获取用户已上传的音频列表（用于音色库创建）
+
+    音频已存OSS，返回音色档案中引用的参考音频列表。
+    """
+    from app.auth.models import VoiceProfile
+    from app.auth.database import SessionLocal
+    db = SessionLocal()
+    try:
+        profiles = db.query(VoiceProfile).filter(VoiceProfile.user_id == user.id).all()
+        audios = []
+        for p in profiles:
+            if p.reference_audio:
+                # 从完整路径/URL中提取文件名
+                filename = Path(p.reference_audio).name if p.reference_audio.startswith("/") else p.reference_audio.split("/")[-1]
+                audios.append({
+                    "audio_id": p.reference_audio,  # OSS URL 作为 audio_id
+                    "filename": filename,
+                    "size": 0,
+                })
+        return audios
+    finally:
+        db.close()
 
 @app.post("/api/upload/music")
 async def upload_music(

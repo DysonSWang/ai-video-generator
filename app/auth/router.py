@@ -387,19 +387,26 @@ def create_voice(
     from pathlib import Path
     from app.auth.models import VoiceProfile
 
-    # 解析参考音频路径（UPLOAD_DIR = BASE_DIR / "assets"）
+    # 解析参考音频路径
+    # 新格式：reference_audio_id 是 OSS URL（https://...）
+    # 旧格式：reference_audio_id 是本地 UUID 文件名（兼容迁移前）
     BASE_DIR = Path(__file__).parent.parent.parent  # app/auth/router.py -> app -> 项目根
     UPLOAD_DIR = BASE_DIR / "assets"
-    audio_extensions = ['.wav', '.mp3', '.m4a', '.aac']
-    reference_audio = None
-    for ext in audio_extensions:
-        audio_path = UPLOAD_DIR / user.id / "audios" / f"{body.reference_audio_id}{ext}"
-        if audio_path.exists():
-            reference_audio = str(audio_path)
-            break
 
-    if not reference_audio:
-        raise HTTPException(404, "参考音频不存在或已删除")
+    if body.reference_audio_id.startswith("https://") or body.reference_audio_id.startswith("http://"):
+        # 新格式：OSS URL 直接使用
+        reference_audio = body.reference_audio_id
+    else:
+        # 旧格式：本地文件路径查找
+        audio_extensions = ['.wav', '.mp3', '.m4a', '.aac']
+        reference_audio = None
+        for ext in audio_extensions:
+            audio_path = UPLOAD_DIR / user.id / "audios" / f"{body.reference_audio_id}{ext}"
+            if audio_path.exists():
+                reference_audio = str(audio_path)
+                break
+        if not reference_audio:
+            raise HTTPException(404, "参考音频不存在或已删除")
 
     # 检查同名音色
     existing = db.query(VoiceProfile).filter(
