@@ -740,7 +740,7 @@ async def execute_pipeline(
                 TranscriptionSegment(**seg) if isinstance(seg, dict) else seg
                 for seg in (extracted_segments or [])
             ]  # 用于字幕时间戳
-            __merge_task_result(task_id, {
+            _merge_task_result(task_id, {
                 "original_video_path": extracted_video_path,
                 "video_duration": video_duration or 0,
                 "pipeline_step": 1
@@ -752,7 +752,7 @@ async def execute_pipeline(
             original_text = confirmed_text
             rewritten = confirmed_text
             original_segments = []
-            __merge_task_result(task_id, {
+            _merge_task_result(task_id, {
                 "original_video_path": "",
                 "video_duration": 0,
                 "pipeline_step": 1
@@ -761,7 +761,7 @@ async def execute_pipeline(
             # 正常流程：下载 → 转录 → 改写
             _save_task(task_id, "processing", 10, "下载同行视频...", task_start_time=task_start_time, user_id=user_id)
             video_result = await download_video(video_link)
-            __merge_task_result(task_id, {
+            _merge_task_result(task_id, {
                 "original_video_path": video_result.video_path,
                 "video_duration": getattr(video_result, 'duration', 0),
                 "pipeline_step": 1
@@ -771,7 +771,7 @@ async def execute_pipeline(
             _save_task(task_id, "processing", 25, "识别语音文案...", task_start_time=task_start_time, user_id=user_id)
             transcription = await transcribe(video_result.video_path)
             original_segments = transcription.segments
-            __merge_task_result(task_id, {
+            _merge_task_result(task_id, {
                 "original_text": transcription.text,
                 "video_duration": getattr(video_result, 'duration', 0),
                 "pipeline_step": 2
@@ -781,7 +781,7 @@ async def execute_pipeline(
             _save_task(task_id, "processing", 40, "改写文案...", task_start_time=task_start_time, user_id=user_id)
             original_text = transcription.text
             rewritten = await rewrite(original_text, options.rewrite_style if options else "口语化")
-            __merge_task_result(task_id, {"rewritten_text": rewritten, "pipeline_step": 3}, user_id=user_id)
+            _merge_task_result(task_id, {"rewritten_text": rewritten, "pipeline_step": 3}, user_id=user_id)
 
 
         # Step 4: 音色克隆 + TTS
@@ -915,7 +915,7 @@ async def execute_pipeline(
                 str(TASKS_DIR / final_video_name), subtitle_style,
                 None  # 不再传audio_path，避免音轨重复
             )
-            __merge_task_result(task_id, {
+            _merge_task_result(task_id, {
                 "subtitle_ass_path": subtitle_path,
                 "lipsync_audio_path": lipsync_audio_path,
                 "tts_audio_path": tts_result.audio_path,
@@ -940,7 +940,7 @@ async def execute_pipeline(
                     None, add_music, current_video, music_file,
                     str(TASKS_DIR / f"{task_id}_music.mp4"), music_opts
                 )
-                __merge_task_result(task_id, {"pipeline_step": 7}, user_id=user_id)
+                _merge_task_result(task_id, {"pipeline_step": 7}, user_id=user_id)
 
         # Step 8: 画中画
         if options and options.pip_video:
@@ -949,7 +949,7 @@ async def execute_pipeline(
                 None, add_pip, current_video, options.pip_video, options.pip_position,
                 str(TASKS_DIR / f"{task_id}_pip.mp4")
             )
-            __merge_task_result(task_id, {"pipeline_step": 8}, user_id=user_id)
+            _merge_task_result(task_id, {"pipeline_step": 8}, user_id=user_id)
 
         # 完成
         final_result = {
