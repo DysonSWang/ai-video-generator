@@ -3,15 +3,28 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import QueuePool
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.parent.parent
 AUTH_DB_PATH = os.getenv("AUTH_DB_PATH", str(BASE_DIR / "auth.db"))
 
-engine = create_engine(
-    f"sqlite:///{AUTH_DB_PATH}",
-    connect_args={"check_same_thread": False}
-)
+# PostgreSQL 优先（DATABASE_URL），否则回退 SQLite
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if DATABASE_URL:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+else:
+    engine = create_engine(
+        f"sqlite:///{AUTH_DB_PATH}",
+        connect_args={"check_same_thread": False},
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

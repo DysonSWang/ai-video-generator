@@ -264,6 +264,7 @@ async def generate_lip_sync_by_provider(
     video_path: str,
     audio_path: str,
     provider: str = "infinite_talk",
+    db=None,
     **kwargs
 ) -> dict:
     """生成口型同步视频（根据provider选择服务）
@@ -272,6 +273,7 @@ async def generate_lip_sync_by_provider(
         video_path: 用户视频/照片路径
         audio_path: 配音音频路径
         provider: "infinite_talk" (默认) 或 "kling"
+        db: SQLAlchemy Session（可选）
         **kwargs: 传递给具体服务的额外参数
 
     Returns:
@@ -282,6 +284,7 @@ async def generate_lip_sync_by_provider(
         result = await generate_infinite_talk(
             person_image=video_path,
             audio_path=audio_path,
+            db=db,
             **kwargs
         )
         return {

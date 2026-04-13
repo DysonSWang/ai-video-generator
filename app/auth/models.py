@@ -141,3 +141,62 @@ class SystemConfig(Base):
     value = Column(Text, nullable=False)  # JSON 字符串存储
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by = Column(String(36), nullable=True)
+
+
+# ============== Pipeline 任务 ==============
+
+class PipelineTask(Base):
+    """视频生成任务"""
+    __tablename__ = "pipeline_tasks"
+
+    task_id = Column(String(64), primary_key=True)
+    user_id = Column(String(36), nullable=False, index=True)
+    status = Column(String(32))
+    progress = Column(Integer, default=0)
+    message = Column(Text)
+    result = Column(Text)  # JSON string
+    pipeline_step = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    task_start_time = Column(Float)
+
+    __table_args__ = (
+        Index("idx_pipeline_tasks_user_id", "user_id"),
+    )
+
+
+class OmniTaskRecord(Base):
+    """OmniVoice 音色克隆任务记录"""
+    __tablename__ = "omni_task_records"
+
+    event_id = Column(String(64), primary_key=True)
+    task_id = Column(String(64), nullable=False, index=True)
+    voice_name = Column(String(128))
+    text = Column(Text)
+    status = Column(String(32), default="pending")  # pending / completed / failed
+    result_file = Column(String(512))
+    result_duration = Column(Float)
+    submission_time = Column(Float, nullable=False)
+    completed_time = Column(Float)
+    error = Column(Text)
+
+    __table_args__ = (
+        Index("idx_omni_task_task_id", "task_id"),
+    )
+
+
+class InfiniteTalkTaskRecord(Base):
+    """InfiniteTalk 口型同步任务记录"""
+    __tablename__ = "infinite_talk_task_records"
+
+    event_id = Column(String(64), primary_key=True)
+    prompt_id = Column(String(128))
+    task_id = Column(String(64), nullable=False, index=True)
+    submission_time = Column(Float, nullable=False)
+    status = Column(String(32), default="pending")  # pending / completed / failed
+    result_file = Column(String(512))
+    result_duration = Column(Float)
+    error = Column(Text)
+
+    __table_args__ = (
+        Index("idx_infinite_talk_task_id", "task_id"),
+    )

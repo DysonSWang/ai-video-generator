@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """OmniVoice 任务管理器 - 通过 Gradio SSE API 追踪异步任务"""
 
-import sqlite3
 import time
-from pathlib import Path
 from typing import Optional, List, Tuple
-from app.config import OMNIVOICE_GRADIO_URL
+from sqlalchemy.orm import Session
 
-MANAGER_DB = Path(__file__).parent.parent.parent / "omnivoice_tasks.db"
+from app.config import OMNIVOICE_GRADIO_URL
 
 _no_proxy_session = None
 
@@ -20,91 +18,67 @@ def _get_session():
     return _no_proxy_session
 
 
-def init_db():
-    """初始化任务数据库"""
-    conn = sqlite3.connect(MANAGER_DB)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS omni_task_records (
-            event_id TEXT PRIMARY KEY,
-            task_id TEXT NOT NULL,
-            voice_name TEXT,
-            text TEXT,
-            status TEXT DEFAULT 'pending',
-            result_file TEXT,
-            result_duration REAL,
-            submission_time REAL NOT NULL,
-            completed_time REAL,
-            error TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.execute("DELETE FROM omni_task_records WHERE created_at < datetime('now', '-7 days')")
-    conn.commit()
-    conn.close()
+def init_db(db: Session):
+    """初始化任务数据库（通过 SQLAlchemy）"""
+    from app.auth.models import OmniTaskRecord
+    db.execute(f"CREATE TABLE IF NOT EXISTS omni_task_records "
+               "(event_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, voice_name TEXT, text TEXT, "
+               "status TEXT DEFAULT 'pending', result_file TEXT, result_duration REAL, "
+               "submission_time REAL NOT NULL, completed_time REAL, error TEXT, "
+               "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+    db.execute("DELETE FROM omni_task_records WHERE created_at < datetime('now', '-7 days')")
+    db.commit()
 
 
-def record_submission(event_id: str, task_id: str, voice_name: str = "", text: str = "") -> None:
+def record_submission(db: Session, event_id: str, task_id: str, voice_name: str = "", text: str = "") -> None:
     """记录一次任务提交"""
-    conn = sqlite3.connect(MANAGER_DB)
-    conn.execute(
-        """INSERT OR REPLACE INTO omni_task_records
-           (event_id, task_id, voice_name, text, submission_time, status)
-           VALUES (?, ?, ?, ?, ?, 'pending')""",
-        (event_id, task_id, voice_name, text, time.time())
+    from app.auth.models import OmniTaskRecord
+    import uuid as _uuid
+    record = OmniTaskRecord(
+        event_id=event_id,
+        task_id=task_id,
+        voice_name=voice_name,
+        text=text,
+        status="pending",
+        submission_time=time.time(),
     )
-    conn.commit()
-    conn.close()
+    db.merge(record)
+    db.commit()
 
 
-def update_result(event_id: str, status: str, result_file: str = None,
+def update_result(db: Session, event_id: str, status: str, result_file: str = None,
                   duration: float = None, error: str = None) -> None:
     """更新任务结果"""
-    conn = sqlite3.connect(MANAGER_DB)
-    if status == 'completed':
-        conn.execute(
-            """UPDATE omni_task_records
-               SET status=?, result_file=?, result_duration=?, completed_time=?
-               WHERE event_id=?""",
-            (status, result_file, duration, time.time(), event_id)
-        )
+    from app.auth.models import OmniTaskRecord
+    record = db.query(OmniTaskRecord).filter(OmniTaskRecord.event_id == event_id).first()
+    if not record:
+        return
+    record.status = status
+    if status == "completed":
+        record.result_file = result_file
+        record.result_duration = duration
+        record.completed_time = time.time()
     else:
-        conn.execute(
-            "UPDATE omni_task_records SET status=?, error=? WHERE event_id=?",
-            (status, error, event_id)
-        )
-    conn.commit()
-    conn.close()
+        record.error = error
+    db.commit()
 
 
-def mark_completed(event_id: str, result_file: str, duration: float = None) -> None:
+def mark_completed(db: Session, event_id: str, result_file: str, duration: float = None) -> None:
     """标记任务完成"""
-    conn = sqlite3.connect(MANAGER_DB)
-    conn.execute(
-        "UPDATE omni_task_records SET status='completed', result_file=?, result_duration=?, completed_time=? WHERE event_id=?",
-        (result_file, duration, time.time(), event_id)
-    )
-    conn.commit()
-    conn.close()
+    update_result(db, event_id, "completed", result_file, duration)
 
 
-def mark_failed(event_id: str, error: str) -> None:
+def mark_failed(db: Session, event_id: str, error: str) -> None:
     """标记任务失败"""
-    conn = sqlite3.connect(MANAGER_DB)
-    conn.execute(
-        "UPDATE omni_task_records SET status='failed', error=? WHERE event_id=?",
-        (error, event_id)
-    )
-    conn.commit()
-    conn.close()
+    update_result(db, event_id, "failed", error=error)
 
 
-def get_pending_tasks() -> List[Tuple]:
+def get_pending_tasks(db: Session) -> List[Tuple]:
     """获取所有 pending 状态的任务"""
-    conn = sqlite3.connect(MANAGER_DB)
-    rows = conn.execute(
-        "SELECT event_id, task_id, submission_time FROM omni_task_records WHERE status='pending' ORDER BY submission_time"
-    ).fetchall()
-    conn.close()
+    from app.auth.models import OmniTaskRecord
+    rows = db.query(OmniTaskRecord.event_id, OmniTaskRecord.task_id, OmniTaskRecord.submission_time).filter(
+        OmniTaskRecord.status == "pending"
+    ).order_by(OmniTaskRecord.submission_time).all()
     return rows
 
 
@@ -136,8 +110,6 @@ def poll_task_status(event_id: str) -> Optional[dict]:
 
         text = resp.text
 
-        # 解析 SSE 格式响应，data: [...]
-
         for line in text.strip().split('\n'):
             if line.startswith('data: '):
                 import json
@@ -157,7 +129,6 @@ def poll_task_status(event_id: str) -> Optional[dict]:
                         content = str(row[3]) if len(row) > 3 and row[3] else ''
                         output_file = str(row[4]) if len(row) > 4 and row[4] else ''
 
-                        # 状态: "✅ 完成" / "⏳ 等待中" / "❌ 错误"
                         is_complete = '完成' in status or 'complete' in status.lower()
                         is_error = 'error' in status.lower() or '错误' in status or '失败' in status
 
@@ -183,7 +154,3 @@ def poll_task_status(event_id: str) -> Optional[dict]:
     except Exception as e:
         print(f">>> OmniVoice 轮询出错: {e}")
         return None
-
-
-# 初始化数据库
-init_db()

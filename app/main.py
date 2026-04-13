@@ -572,11 +572,56 @@ async def execute_pipeline(
         extracted_video_path: 已下载的视频路径（有则复用，避免重复下载）
         extracted_segments: 原始视频的Whisper段落（用于字幕时间戳）
     """
+    from app.auth.database import SessionLocal
+    from app.auth.models import PipelineTask
+    import json as _json
+
+    db = SessionLocal()
     loop = asyncio.get_event_loop()
     task_start_time = time_module.time()
 
+    def _save_task(task_id, status, progress, message, result=None, task_start_time=None, pipeline_step=None, user_id=None):
+        result_json = _json.dumps(result) if result else None
+        row = db.query(PipelineTask).filter(PipelineTask.task_id == task_id).first()
+        if row:
+            row.status = status
+            row.progress = progress
+            row.message = message
+            row.result = result_json
+            if task_start_time is not None:
+                row.task_start_time = task_start_time
+            if pipeline_step is not None:
+                row.pipeline_step = pipeline_step
+            row.user_id = user_id or row.user_id
+        else:
+            row = PipelineTask(
+                task_id=task_id,
+                user_id=user_id or "",
+                status=status,
+                progress=progress,
+                message=message,
+                result=result_json,
+                task_start_time=task_start_time,
+                pipeline_step=pipeline_step or 0,
+            )
+            db.add(row)
+        db.commit()
+
+    def _merge_task_result(task_id, updates, user_id=None):
+        row = db.query(PipelineTask).filter(PipelineTask.task_id == task_id).first()
+        if not row:
+            return
+        current_result = _json.loads(row.result) if row.result else {}
+        current_result.update(updates)
+        pipeline_step = updates.get("pipeline_step", row.pipeline_step or 0)
+        existing_user_id = row.user_id
+        row.result = _json.dumps(current_result)
+        row.pipeline_step = pipeline_step
+        row.user_id = existing_user_id or user_id
+        db.commit()
+
     try:
-        save_task(task_id, "processing", 5, "准备中...", task_start_time=task_start_time, user_id=user_id)
+        _save_task(task_id, "processing", 5, "准备中...", task_start_time=task_start_time, user_id=user_id)
 
         # 解析文件路径 (根据file_id查找实际文件，多租户路径)
         user_video = _resolve_file_path(UPLOAD_DIR / user_id / "videos", user_video_id, ['.mp4', '.mov', '.avi', '.mkv', '.jpg', '.jpeg', '.png', '.webp', '.gif'])
@@ -590,7 +635,7 @@ async def execute_pipeline(
         # Step 1: 下载同行视频（若有已确认文案则复用已下载的视频；无视频时跳过）
         if confirmed_text and extracted_video_path:
             # 复用已下载视频（识别流程过来的）
-            save_task(task_id, "processing", 10, "复用已确认视频...", task_start_time=task_start_time, user_id=user_id)
+            _save_task(task_id, "processing", 10, "复用已确认视频...", task_start_time=task_start_time, user_id=user_id)
             video_result = VideoResult(
                 video_path=extracted_video_path,
                 duration=0, desc=""
@@ -601,52 +646,52 @@ async def execute_pipeline(
                 TranscriptionSegment(**seg) if isinstance(seg, dict) else seg
                 for seg in (extracted_segments or [])
             ]  # 用于字幕时间戳
-            merge_task_result(task_id, {
+            __merge_task_result(task_id, {
                 "original_video_path": extracted_video_path,
                 "video_duration": video_duration or 0,
                 "pipeline_step": 1
             }, user_id=user_id)
         elif confirmed_text and (not video_link or not video_link.strip()):
             # 直接粘贴文案模式：没有视频，跳过下载/转录/改写
-            save_task(task_id, "processing", 10, "准备生成...", task_start_time=task_start_time, user_id=user_id)
+            _save_task(task_id, "processing", 10, "准备生成...", task_start_time=task_start_time, user_id=user_id)
             video_result = VideoResult(video_path="", duration=0, desc="")
             original_text = confirmed_text
             rewritten = confirmed_text
             original_segments = []
-            merge_task_result(task_id, {
+            __merge_task_result(task_id, {
                 "original_video_path": "",
                 "video_duration": 0,
                 "pipeline_step": 1
             }, user_id=user_id)
         else:
             # 正常流程：下载 → 转录 → 改写
-            save_task(task_id, "processing", 10, "下载同行视频...", task_start_time=task_start_time, user_id=user_id)
+            _save_task(task_id, "processing", 10, "下载同行视频...", task_start_time=task_start_time, user_id=user_id)
             video_result = await download_video(video_link)
-            merge_task_result(task_id, {
+            __merge_task_result(task_id, {
                 "original_video_path": video_result.video_path,
                 "video_duration": getattr(video_result, 'duration', 0),
                 "pipeline_step": 1
             }, user_id=user_id)
 
             # Step 2: Whisper识别
-            save_task(task_id, "processing", 25, "识别语音文案...", task_start_time=task_start_time, user_id=user_id)
+            _save_task(task_id, "processing", 25, "识别语音文案...", task_start_time=task_start_time, user_id=user_id)
             transcription = await transcribe(video_result.video_path)
             original_segments = transcription.segments
-            merge_task_result(task_id, {
+            __merge_task_result(task_id, {
                 "original_text": transcription.text,
                 "video_duration": getattr(video_result, 'duration', 0),
                 "pipeline_step": 2
             }, user_id=user_id)
 
             # Step 3: 千问改写
-            save_task(task_id, "processing", 40, "改写文案...", task_start_time=task_start_time, user_id=user_id)
+            _save_task(task_id, "processing", 40, "改写文案...", task_start_time=task_start_time, user_id=user_id)
             original_text = transcription.text
             rewritten = await rewrite(original_text, options.rewrite_style if options else "口语化")
-            merge_task_result(task_id, {"rewritten_text": rewritten, "pipeline_step": 3}, user_id=user_id)
+            __merge_task_result(task_id, {"rewritten_text": rewritten, "pipeline_step": 3}, user_id=user_id)
 
 
         # Step 4: 音色克隆 + TTS
-        save_task(task_id, "processing", 55, "克隆声音并配音...", task_start_time=task_start_time, user_id=user_id)
+        _save_task(task_id, "processing", 55, "克隆声音并配音...", task_start_time=task_start_time, user_id=user_id)
         from app.config import OMNIVOICE_SAVED_VOICES
         tts_audio_path = str(TASKS_DIR / f"{task_id}_tts.wav")
 
@@ -672,32 +717,27 @@ async def execute_pipeline(
             )
         else:
             # 用户音色库音色（通过 voice_profiles 表查询）
-            from app.auth.database import SessionLocal
-            voice_db = SessionLocal()
-            try:
-                from app.auth.models import VoiceProfile
-                profile = voice_db.query(VoiceProfile).filter(
-                    VoiceProfile.id == original_voice,
-                    VoiceProfile.user_id == user_id
-                ).first()
-                if profile and profile.reference_audio:
-                    tts_result = await omni_synthesize(
-                        text=rewritten,
-                        voice_name=f"user_voice_{original_voice[:8]}",
-                        ref_audio_path=profile.reference_audio,
-                        output_path=tts_audio_path,
-                    )
-                else:
-                    raise ValueError(f"未找到音色: {original_voice}")
-            finally:
-                voice_db.close()
-        merge_task_result(task_id, {
+            from app.auth.models import VoiceProfile
+            profile = db.query(VoiceProfile).filter(
+                VoiceProfile.id == original_voice,
+                VoiceProfile.user_id == user_id
+            ).first()
+            if profile and profile.reference_audio:
+                tts_result = await omni_synthesize(
+                    text=rewritten,
+                    voice_name=f"user_voice_{original_voice[:8]}",
+                    ref_audio_path=profile.reference_audio,
+                    output_path=tts_audio_path,
+                )
+            else:
+                raise ValueError(f"未找到音色: {original_voice}")
+        _merge_task_result(task_id, {
             "tts_audio_path": tts_result.audio_path,
             "pipeline_step": 4
         }, user_id=user_id)
 
         # Step 5: 口型同步
-        save_task(task_id, "processing", 70, "生成口型同步视频...", task_start_time=task_start_time, user_id=user_id)
+        _save_task(task_id, "processing", 70, "生成口型同步视频...", task_start_time=task_start_time, user_id=user_id)
         provider = options.lip_sync_provider if options else "infinite_talk"
 
         from app.services.lip_sync import generate_lip_sync_by_provider
@@ -744,14 +784,14 @@ async def execute_pipeline(
                 max_wait=1800  # 30分钟，支持长任务
             )
         current_video = lip_sync_result["video_path"]
-        merge_task_result(task_id, {
+        _merge_task_result(task_id, {
             "lip_sync_video_path": current_video,
             "pipeline_step": 5
         }, user_id=user_id)
 
         # Step 6: 字幕
         if options and options.add_subtitle:
-            save_task(task_id, "processing", 85, "添加字幕...", task_start_time=task_start_time, user_id=user_id)
+            _save_task(task_id, "processing", 85, "添加字幕...", task_start_time=task_start_time, user_id=user_id)
             subtitle_style = SubtitleStyle(
                 font_size=72,
                 font_color="&HFFFFFF",
@@ -781,7 +821,7 @@ async def execute_pipeline(
                 str(TASKS_DIR / final_video_name), subtitle_style,
                 None  # 不再传audio_path，避免音轨重复
             )
-            merge_task_result(task_id, {
+            __merge_task_result(task_id, {
                 "subtitle_ass_path": subtitle_path,
                 "lipsync_audio_path": lipsync_audio_path,
                 "tts_audio_path": tts_result.audio_path,
@@ -792,7 +832,7 @@ async def execute_pipeline(
 
         # Step 7: 配乐
         if options and (options.music_path or options.music_bgm_id):
-            save_task(task_id, "processing", 90, "添加配乐...", task_start_time=task_start_time, user_id=user_id)
+            _save_task(task_id, "processing", 90, "添加配乐...", task_start_time=task_start_time, user_id=user_id)
             # 优先使用自定义音乐，否则用内置BGM
             music_file = options.music_path
             if not music_file and options.music_bgm_id:
@@ -806,16 +846,16 @@ async def execute_pipeline(
                     None, add_music, current_video, music_file,
                     str(TASKS_DIR / f"{task_id}_music.mp4"), music_opts
                 )
-                merge_task_result(task_id, {"pipeline_step": 7}, user_id=user_id)
+                __merge_task_result(task_id, {"pipeline_step": 7}, user_id=user_id)
 
         # Step 8: 画中画
         if options and options.pip_video:
-            save_task(task_id, "processing", 95, "添加画中画...", task_start_time=task_start_time, user_id=user_id)
+            _save_task(task_id, "processing", 95, "添加画中画...", task_start_time=task_start_time, user_id=user_id)
             current_video = await loop.run_in_executor(
                 None, add_pip, current_video, options.pip_video, options.pip_position,
                 str(TASKS_DIR / f"{task_id}_pip.mp4")
             )
-            merge_task_result(task_id, {"pipeline_step": 8}, user_id=user_id)
+            __merge_task_result(task_id, {"pipeline_step": 8}, user_id=user_id)
 
         # 完成
         final_result = {
@@ -836,28 +876,25 @@ async def execute_pipeline(
             final_result["lipsync_audio_path"] = lipsync_audio_path
             final_result["tts_audio_path"] = tts_result.audio_path
             final_result["audio_duration"] = tts_result.duration
-        save_task(task_id, "completed", 100, "完成!", final_result, task_start_time=task_start_time, user_id=user_id)
+        _save_task(task_id, "completed", 100, "完成!", final_result, task_start_time=task_start_time, user_id=user_id)
 
-        # 记录用量 + 扣费
+        # 记录用量 + 扣费（复用 execute_pipeline 的 db session）
         try:
             from app.auth.usage_service import record_usage, deduct_video_cost
-            from app.auth.database import SessionLocal
-            db = SessionLocal()
-            try:
-                duration = tts_result.duration if 'tts_result' in dir() else (video_duration or 0)
-                record_usage(db, user_id, "task_count", 1, task_id=task_id)
-                record_usage(db, user_id, "video_duration_seconds", int(duration), task_id=task_id)
-                # 按视频时长扣费（支持扣到负值）
-                deduct_video_cost(db, user_id, duration, task_id=task_id)
-            finally:
-                db.close()
+            duration = tts_result.duration if 'tts_result' in dir() else (video_duration or 0)
+            record_usage(db, user_id, "task_count", 1, task_id=task_id)
+            record_usage(db, user_id, "video_duration_seconds", int(duration), task_id=task_id)
+            deduct_video_cost(db, user_id, duration, task_id=task_id)
         except Exception as ue:
             print(f"[用量记录/扣费失败] {ue}")
+        finally:
+            db.close()
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        save_task(task_id, "failed", 0, f"失败: {str(e)}", task_start_time=task_start_time, user_id=user_id)
+        _save_task(task_id, "failed", 0, f"失败: {str(e)}", task_start_time=task_start_time, user_id=user_id)
+        db.close()
 
 @app.get("/api/tasks")
 async def list_tasks(
